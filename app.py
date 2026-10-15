@@ -80,7 +80,7 @@ ID_PREFIX = {
     ADJUSTMENT_TABLE: ("Adjustment_ID", "ADJ"),
 }
 
-CACHE_TTL = 1800
+CACHE_TTL = 3600
 PRODUCTION_LINES = ["Machine 01", "Machine 02", "Machine 03"]
 PRODUCTION_STATUSES = ["Completed", "In Progress", "Pending", "Rejected"]
 ADJUSTMENT_REASONS = ["Physical Check", "Damage", "Loss", "Found", "Other"]
@@ -94,13 +94,32 @@ COMPANY_ADDR_LINE2 = ("HEAD OFFICE: 4.5 KM, F.E.H.S., Block-4, Karachi. "
 COMPANY_ADDR_LINE3 = ("TEL: 021-35162930, 021-35162931, 0335-1279370, 0316-1239770")
 
 
+# =========================================================
+# ROLE -> MODULES (Sirf 2 accounts: user, manager)
+# =========================================================
+
 ROLE_MODULES = {
-    "admin": ["Executive Dashboard", "Item Registration", "Bulk Import", "Data Management"],
-    "accountant": ["Executive Dashboard", "Delivery Challan", "Return Challan", "Invoice", "Analytics"],
-    "manager": ["Executive Dashboard", "Item Registration", "Bulk Import",
-        "Production", "Stock Control", "Stock Adjustment", "Physical Check",
-        "Delivery Challan", "Return Challan", "Invoice", "Analytics",
-        "Custom Charts", "Data Management"],
+    # "user" — Sirf Item Registration aur Bulk Import
+    "user": [
+        "Item Registration",
+        "Bulk Import",
+    ],
+    # "manager" — Poora ERP
+    "manager": [
+        "Executive Dashboard",
+        "Item Registration",
+        "Bulk Import",
+        "Production",
+        "Stock Control",
+        "Stock Adjustment",
+        "Physical Check",
+        "Delivery Challan",
+        "Return Challan",
+        "Invoice",
+        "Analytics",
+        "Custom Charts",
+        "Data Management",
+    ],
 }
 
 
@@ -641,12 +660,12 @@ if not st.session_state.logged_in:
 
 
 CURRENT_USER = st.session_state.user or {}
-USER_ROLE = CURRENT_USER.get("role", "manager")
+USER_ROLE = CURRENT_USER.get("role", "user")   # Default = user (safe)
 USER_NAME = CURRENT_USER.get("full_name") or CURRENT_USER.get("username", "User")
 
 
 # =========================================================
-# LAZY DATA LOADING (only after login)
+# LAZY DATA LOADING
 # =========================================================
 
 items, items_err = load_items()
@@ -671,7 +690,6 @@ TOTALS = compute_totals(production, opening, prod_qty, dispatch, return_qty, adj
 _css = _read_css()
 if _css:
     st.markdown(f"<style>{_css}</style>", unsafe_allow_html=True)
-
 
 # =========================================================
 # LETTERHEAD / PRINT CSS
@@ -928,7 +946,7 @@ cursor:pointer;">Print / Save as PDF</button>
 
 
 # =========================================================
-# CRUD TABLE
+# CRUD TABLE (Stock Control)
 # =========================================================
 
 def crud_stock_table(table_name, df, id_col, label, items_df, load_error=None):
@@ -1028,8 +1046,9 @@ def crud_stock_table(table_name, df, id_col, label, items_df, load_error=None):
             except Exception as e:
                 st.error(f"Delete failed: {str(e)}")
 
+
 # =========================================================
-# SHARED UI COMPONENTS
+# CHALLAN / INVOICE ITEM EDITORS
 # =========================================================
 
 def challan_items_editor(key_prefix, items_df, item_lookup):
@@ -1247,8 +1266,15 @@ NUMERIC_TARGETS = {
 def bulk_import_page():
     st.title("Bulk Import")
     tab1, tab2 = st.tabs(["Import Data", "Download All Data"])
+
+    # "user" role ko sirf Opening Stock
+    if USER_ROLE == "user":
+        allowed_targets = ["Opening Stock"]
+    else:
+        allowed_targets = list(IMPORT_TARGETS.keys())
+
     with tab1:
-        target_name = st.selectbox("Target Module", list(IMPORT_TARGETS.keys()),
+        target_name = st.selectbox("Target Module", allowed_targets,
                                     key="bulk_target_select")
         cfg = IMPORT_TARGETS[target_name]
         target_table = cfg["table"]
@@ -1340,18 +1366,25 @@ def bulk_import_page():
                                 for e in errors_list[:30]:
                                     st.code(e)
                         refresh_all()
+
     with tab2:
-        st.markdown("#### All Module Data Export")
-        all_data = {
-            "Item_Registration": items, "Production": production,
-            "Opening_Stock": opening, "Production_Qty": prod_qty,
-            "Dispatch_Qty": dispatch, "Return_Qty": return_qty,
-            "Closing_Stock": closing, "Stock_Adjustment": adjustment,
-            "Delivery_Challan": challans, "Delivery_Challan_Items": challan_items,
-            "Return_Challan": return_challans,
-            "Return_Challan_Items": return_challan_items,
-            "Invoice": invoices, "Invoice_Items": invoice_items,
-        }
+        st.markdown("#### Data Export")
+
+        # "user" role ko sirf Opening Stock
+        if USER_ROLE == "user":
+            all_data = {"Opening_Stock": opening}
+        else:
+            all_data = {
+                "Item_Registration": items, "Production": production,
+                "Opening_Stock": opening, "Production_Qty": prod_qty,
+                "Dispatch_Qty": dispatch, "Return_Qty": return_qty,
+                "Closing_Stock": closing, "Stock_Adjustment": adjustment,
+                "Delivery_Challan": challans, "Delivery_Challan_Items": challan_items,
+                "Return_Challan": return_challans,
+                "Return_Challan_Items": return_challan_items,
+                "Invoice": invoices, "Invoice_Items": invoice_items,
+            }
+
         summary_rows = [{"Table": k, "Rows": len(v)} for k, v in all_data.items()]
         st.dataframe(pd.DataFrame(summary_rows), use_container_width=True, hide_index=True)
         st.markdown("---")
@@ -1449,7 +1482,7 @@ with st.sidebar:
     if st.button("Logout", use_container_width=True, key="logout_btn"):
         logout_user()
     st.markdown("---")
-    allowed_modules = ROLE_MODULES.get(USER_ROLE, ROLE_MODULES["manager"])
+    allowed_modules = ROLE_MODULES.get(USER_ROLE, ROLE_MODULES["user"])
     page = st.radio("MODULES", allowed_modules)
     st.markdown("---")
     if st.button("Refresh Data", use_container_width=True):
@@ -1518,27 +1551,6 @@ if page == "Executive Dashboard":
                 use_container_width=True)
         else:
             empty_state("No production data.")
-    ch3, ch4 = st.columns(2)
-    with ch3:
-        st.subheader("Items by Material Grade")
-        if not items.empty and "Material_Grade" in items.columns:
-            idf = (items["Material_Grade"].fillna("Unknown").value_counts().head(10)
-                   .rename_axis("Material_Grade").reset_index(name="Count"))
-            idf["Material_Grade"] = idf["Material_Grade"].astype(str)
-            fig = px.bar(idf, x="Material_Grade", y="Count", text_auto=True)
-            fig.update_layout(xaxis_tickangle=-30)
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            empty_state("No item data.")
-    with ch4:
-        st.subheader("Items by Color")
-        if not items.empty and "Color" in items.columns:
-            cdf = (items["Color"].fillna("Unknown").value_counts().head(10)
-                   .rename_axis("Color").reset_index(name="Count"))
-            st.plotly_chart(px.pie(cdf, names="Color", values="Count", hole=0.5),
-                            use_container_width=True)
-        else:
-            empty_state("No item data.")
     st.markdown("---")
     st.subheader("Stock Ledger")
     if not STOCK_LEDGER.empty:
@@ -1553,13 +1565,22 @@ elif page == "Bulk Import":
 
 elif page == "Item Registration":
     st.title("Item Registration")
-    if items_err: st.error(f"Failed to load items: {items_err}")
-    tab1, tab2, tab3 = st.tabs(["View Records", "Add Item", "Update / Delete"])
+    if items_err:
+        st.error(f"Failed to load items: {items_err}")
+
+    # "user" role: sirf View + Add (Delete/Update nahi)
+    if USER_ROLE == "user":
+        tab1, tab2 = st.tabs(["View Records", "Add Item"])
+        tab3 = None
+    else:
+        tab1, tab2, tab3 = st.tabs(["View Records", "Add Item", "Update / Delete"])
+
     with tab1:
         search = st.text_input("Search", placeholder="Item ID, Code, Grade...")
         display = filter_df(items, search)
         st.dataframe(display, use_container_width=True, hide_index=True)
         st.caption(f"{len(display)} record(s)")
+
     with tab2:
         section_title("New Item Entry", "Fields marked with * are required")
         next_item_id = next_id_for(ITEM_TABLE, items)
@@ -1604,55 +1625,57 @@ elif page == "Item Registration":
                 refresh_all()
             except Exception as e:
                 st.error(f"Save failed: {str(e)}")
-    with tab3:
-        if items.empty:
-            st.info("No items available.")
-        else:
-            selected_id = st.selectbox("Select Item ID",
-                items["Item_ID"].astype(str).tolist())
-            selected = items.loc[items["Item_ID"].astype(str) == selected_id].iloc[0]
-            def _v(col):
-                v = selected.get(col)
-                return str(v) if pd.notna(v) else ""
-            section_title("Edit Item", f"Item ID: {selected_id}")
-            with st.form("update_item_form"):
-                c1, c2, c3 = st.columns(3)
-                with c1:
-                    new_code = st.text_input("Item Code", value=_v("Item_Code"))
-                    new_grade = st.text_input("Material Grade", value=_v("Material_Grade"))
-                    new_application = st.text_input("Application", value=_v("Application"))
-                with c2:
-                    new_diameter = st.text_input("Nominal Diameter (mm)", value=_v("Nominal_Diameter_mm"))
-                    new_wall = st.text_input("Wall Thickness (mm)", value=_v("Wall_Thickness_mm"))
-                    new_sdr = st.text_input("SDR", value=_v("SDR"))
-                with c3:
-                    new_color = st.text_input("Color", value=_v("Color"))
-                    new_length = st.text_input("Standard Length", value=_v("Standard_Length"))
-                    new_unit = st.text_input("Unit", value=_v("Unit"))
+
+    if tab3 is not None:
+        with tab3:
+            if items.empty:
+                st.info("No items available.")
+            else:
+                selected_id = st.selectbox("Select Item ID",
+                    items["Item_ID"].astype(str).tolist())
+                selected = items.loc[items["Item_ID"].astype(str) == selected_id].iloc[0]
+                def _v(col):
+                    v = selected.get(col)
+                    return str(v) if pd.notna(v) else ""
+                section_title("Edit Item", f"Item ID: {selected_id}")
+                with st.form("update_item_form"):
+                    c1, c2, c3 = st.columns(3)
+                    with c1:
+                        new_code = st.text_input("Item Code", value=_v("Item_Code"))
+                        new_grade = st.text_input("Material Grade", value=_v("Material_Grade"))
+                        new_application = st.text_input("Application", value=_v("Application"))
+                    with c2:
+                        new_diameter = st.text_input("Nominal Diameter (mm)", value=_v("Nominal_Diameter_mm"))
+                        new_wall = st.text_input("Wall Thickness (mm)", value=_v("Wall_Thickness_mm"))
+                        new_sdr = st.text_input("SDR", value=_v("SDR"))
+                    with c3:
+                        new_color = st.text_input("Color", value=_v("Color"))
+                        new_length = st.text_input("Standard Length", value=_v("Standard_Length"))
+                        new_unit = st.text_input("Unit", value=_v("Unit"))
+                    st.markdown("---")
+                    update = st.form_submit_button("Update Item", type="primary",
+                                                    use_container_width=True)
+                if update:
+                    try:
+                        supabase.table(ITEM_TABLE).update({
+                            "Item_Code": new_code.strip(), "Material_Grade": new_grade.strip(),
+                            "Application": new_application.strip(),
+                            "Nominal_Diameter_mm": new_diameter.strip(),
+                            "Wall_Thickness_mm": new_wall.strip(), "SDR": new_sdr.strip(),
+                            "Color": new_color.strip(), "Standard_Length": new_length.strip(),
+                            "Unit": new_unit.strip()}).eq("Item_ID", selected_id).execute()
+                        st.success("Item updated.")
+                        refresh_all()
+                    except Exception as e:
+                        st.error(f"Update failed: {str(e)}")
                 st.markdown("---")
-                update = st.form_submit_button("Update Item", type="primary",
-                                                use_container_width=True)
-            if update:
-                try:
-                    supabase.table(ITEM_TABLE).update({
-                        "Item_Code": new_code.strip(), "Material_Grade": new_grade.strip(),
-                        "Application": new_application.strip(),
-                        "Nominal_Diameter_mm": new_diameter.strip(),
-                        "Wall_Thickness_mm": new_wall.strip(), "SDR": new_sdr.strip(),
-                        "Color": new_color.strip(), "Standard_Length": new_length.strip(),
-                        "Unit": new_unit.strip()}).eq("Item_ID", selected_id).execute()
-                    st.success("Item updated.")
-                    refresh_all()
-                except Exception as e:
-                    st.error(f"Update failed: {str(e)}")
-            st.markdown("---")
-            if st.button("Delete Item", type="secondary"):
-                try:
-                    supabase.table(ITEM_TABLE).delete().eq("Item_ID", selected_id).execute()
-                    st.success("Item deleted.")
-                    refresh_all()
-                except Exception as e:
-                    st.error(f"Delete failed: {str(e)}")
+                if st.button("Delete Item", type="secondary"):
+                    try:
+                        supabase.table(ITEM_TABLE).delete().eq("Item_ID", selected_id).execute()
+                        st.success("Item deleted.")
+                        refresh_all()
+                    except Exception as e:
+                        st.error(f"Delete failed: {str(e)}")
 
 
 elif page == "Production":
@@ -2782,4 +2805,4 @@ elif page == "Data Management":
 
 
 st.markdown("---")
-st.caption("Flex Head Industries Pvt Ltd | ERP Management System")
+st.caption("Flex Head Industries Pvt Ltd | ERP Management System")    
