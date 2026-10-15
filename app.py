@@ -95,11 +95,11 @@ COMPANY_ADDR_LINE3 = ("TEL: 021-35162930, 021-35162931, 0335-1279370, 0316-12397
 
 
 # =========================================================
-# ROLE -> MODULES
+# ROLE -> MODULES (Sirf 2 roles: admin, manager)
 # =========================================================
 
 ROLE_MODULES = {
-    "user": ["Item Registration", "Bulk Import"],
+    "admin": ["Item Registration", "Bulk Import"],
     "manager": [
         "Executive Dashboard", "Item Registration", "Bulk Import",
         "Production", "Stock Control", "Stock Adjustment", "Physical Check",
@@ -656,7 +656,7 @@ if not st.session_state.logged_in:
 
 
 CURRENT_USER = st.session_state.user or {}
-USER_ROLE = (CURRENT_USER.get("role") or "user").strip().lower()
+USER_ROLE = (CURRENT_USER.get("role") or "admin").strip().lower()
 USER_NAME = CURRENT_USER.get("full_name") or CURRENT_USER.get("username", "User")
 
 
@@ -1256,7 +1256,7 @@ def bulk_import_page():
     st.title("Bulk Import")
     tab1, tab2 = st.tabs(["Import Data", "Export Data"])
 
-    if USER_ROLE == "user":
+    if USER_ROLE == "admin":
         allowed_targets = ["Item Registration", "Opening Stock"]
         export_data = {
             "Item_Registration": items,
@@ -1468,7 +1468,7 @@ with st.sidebar:
     if st.button("Logout", use_container_width=True, key="logout_btn"):
         logout_user()
     st.markdown("---")
-    allowed_modules = ROLE_MODULES.get(USER_ROLE, ROLE_MODULES["user"])
+    allowed_modules = ROLE_MODULES.get(USER_ROLE, ROLE_MODULES["admin"])
     page = st.radio("MODULES", allowed_modules)
     st.markdown("---")
     if st.button("Refresh Data", use_container_width=True):
@@ -1556,7 +1556,7 @@ elif page == "Item Registration":
     if items_err:
         st.error(f"Failed to load items: {items_err}")
 
-    if USER_ROLE == "user":
+    if USER_ROLE == "admin":
         tab1, tab2, tab3 = st.tabs(["View Records", "Add Item", "Update Item"])
     else:
         tab1, tab2, tab3 = st.tabs(["View Records", "Add Item", "Update / Delete"])
@@ -1656,7 +1656,7 @@ elif page == "Item Registration":
                     refresh_all()
                 except Exception as e:
                     st.error(f"Update failed: {str(e)}")
-            if USER_ROLE != "user":
+            if USER_ROLE != "admin":
                 st.markdown("---")
                 if st.button("Delete Item", type="secondary"):
                     try:
