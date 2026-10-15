@@ -40,9 +40,9 @@ INVOICE_TABLE = "Invoice"
 INVOICE_ITEMS_TABLE = "Invoice_Items"
 USERS_TABLE = "Users"
 
-ITEM_COLUMNS = ("Item_ID", "Item_Code", "Material_Grade", "Application",
-    "Nominal_Diameter_mm", "Wall_Thickness_mm", "SDR", "Color",
-    "Standard_Length", "Unit")
+ITEM_COLUMNS = ("Item_ID", "Item_Code", "Item_Name", "Material_Grade",
+    "Application", "Nominal_Diameter_mm", "Wall_Thickness_mm", "SDR",
+    "Color", "Standard_Length", "Unit")
 PRODUCTION_COLUMNS = ("Production_ID", "Item_ID", "Production_Date", "Batch_No",
     "Production_Line", "Planned_Qty_m", "Good_Qty_m",
     "Rejected_Qty_m", "Production_Status")
@@ -95,30 +95,16 @@ COMPANY_ADDR_LINE3 = ("TEL: 021-35162930, 021-35162931, 0335-1279370, 0316-12397
 
 
 # =========================================================
-# ROLE -> MODULES (Sirf 2 accounts: user, manager)
+# ROLE -> MODULES
 # =========================================================
 
 ROLE_MODULES = {
-    # "user" — Sirf Item Registration aur Bulk Import
-    "user": [
-        "Item Registration",
-        "Bulk Import",
-    ],
-    # "manager" — Poora ERP
+    "user": ["Item Registration", "Bulk Import"],
     "manager": [
-        "Executive Dashboard",
-        "Item Registration",
-        "Bulk Import",
-        "Production",
-        "Stock Control",
-        "Stock Adjustment",
-        "Physical Check",
-        "Delivery Challan",
-        "Return Challan",
-        "Invoice",
-        "Analytics",
-        "Custom Charts",
-        "Data Management",
+        "Executive Dashboard", "Item Registration", "Bulk Import",
+        "Production", "Stock Control", "Stock Adjustment", "Physical Check",
+        "Delivery Challan", "Return Challan", "Invoice", "Analytics",
+        "Custom Charts", "Data Management",
     ],
 }
 
@@ -231,6 +217,18 @@ def date_str(d):
 
 def today_str():
     return date.today().strftime("%Y-%m-%d")
+
+
+def generate_item_name(material_grade, diameter, color):
+    """Auto-generate Item Name from Material Grade, Diameter, Color."""
+    parts = []
+    for val in (material_grade, diameter, color):
+        if val is None:
+            continue
+        s = str(val).strip()
+        if s and s.lower() not in ("nan", "none", "null", "-"):
+            parts.append(s)
+    return " - ".join(parts)
 
 
 def _fetch_table(table_name, columns, num_cols=()):
@@ -660,7 +658,7 @@ if not st.session_state.logged_in:
 
 
 CURRENT_USER = st.session_state.user or {}
-USER_ROLE = CURRENT_USER.get("role", "user")   # Default = user (safe)
+USER_ROLE = CURRENT_USER.get("role", "user")
 USER_NAME = CURRENT_USER.get("full_name") or CURRENT_USER.get("username", "User")
 
 
@@ -690,6 +688,7 @@ TOTALS = compute_totals(production, opening, prod_qty, dispatch, return_qty, adj
 _css = _read_css()
 if _css:
     st.markdown(f"<style>{_css}</style>", unsafe_allow_html=True)
+    
 
 # =========================================================
 # LETTERHEAD / PRINT CSS
@@ -946,7 +945,7 @@ cursor:pointer;">Print / Save as PDF</button>
 
 
 # =========================================================
-# CRUD TABLE (Stock Control)
+# CRUD STOCK TABLE
 # =========================================================
 
 def crud_stock_table(table_name, df, id_col, label, items_df, load_error=None):
@@ -1265,9 +1264,8 @@ NUMERIC_TARGETS = {
 
 def bulk_import_page():
     st.title("Bulk Import")
-    tab1, tab2 = st.tabs(["Import Data", "Download All Data"])
+    tab1, tab2 = st.tabs(["Import Data", "Download Data"])
 
-    # "user" role ko sirf Opening Stock
     if USER_ROLE == "user":
         allowed_targets = ["Opening Stock"]
     else:
@@ -1370,7 +1368,6 @@ def bulk_import_page():
     with tab2:
         st.markdown("#### Data Export")
 
-        # "user" role ko sirf Opening Stock
         if USER_ROLE == "user":
             all_data = {"Opening_Stock": opening}
         else:
@@ -1395,8 +1392,8 @@ def bulk_import_page():
                     csv_bytes = df_data.to_csv(index=False).encode("utf-8")
                     zf.writestr(f"{name}.csv", csv_bytes)
             zip_buffer.seek(0)
-            st.download_button("Download All Tables (CSV - ZIP)",
-                data=zip_buffer.getvalue(), file_name="erp_all_data_csv.zip",
+            st.download_button("Download All (CSV - ZIP)",
+                data=zip_buffer.getvalue(), file_name="erp_data_csv.zip",
                 mime="application/zip", use_container_width=True, key="dl_all_csv_zip")
         except Exception as e:
             st.error(f"Failed: {e}")
@@ -1412,8 +1409,8 @@ def bulk_import_page():
                     else:
                         df_data.to_excel(writer, sheet_name=sheet_name, index=False)
             excel_buffer.seek(0)
-            st.download_button("Download All Tables (Excel - XLSX)",
-                data=excel_buffer.getvalue(), file_name="erp_all_data.xlsx",
+            st.download_button("Download All (Excel - XLSX)",
+                data=excel_buffer.getvalue(), file_name="erp_data.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True, key="dl_all_excel")
         except ImportError:
@@ -1533,8 +1530,9 @@ if page == "Executive Dashboard":
             sdf = (production["Production_Status"].fillna("Unknown")
                    .value_counts().rename_axis("Status").reset_index(name="Count"))
             sdf["Status"] = sdf["Status"].astype(str)
-            st.plotly_chart(px.pie(sdf, names="Status", values="Count", hole=0.5),
-                            use_container_width=True)
+            fig = px.pie(sdf, names="Status", values="Count", hole=0.5)
+            fig.update_layout(height=340, margin=dict(l=10, r=10, t=10, b=10))
+            st.plotly_chart(fig, use_container_width=True)
         else:
             empty_state("No production data.")
     with ch2:
@@ -1546,9 +1544,10 @@ if page == "Executive Dashboard":
             mdf["Production_Line"] = mdf["Production_Line"].astype(str)
             grp = mdf.groupby("Production_Line", as_index=False)[
                 ["Planned_Qty_m", "Good_Qty_m", "Rejected_Qty_m"]].sum()
-            st.plotly_chart(px.bar(grp, x="Production_Line",
-                y=["Planned_Qty_m", "Good_Qty_m", "Rejected_Qty_m"], barmode="group"),
-                use_container_width=True)
+            fig = px.bar(grp, x="Production_Line",
+                y=["Planned_Qty_m", "Good_Qty_m", "Rejected_Qty_m"], barmode="group")
+            fig.update_layout(height=340, margin=dict(l=10, r=10, t=10, b=10))
+            st.plotly_chart(fig, use_container_width=True)
         else:
             empty_state("No production data.")
     st.markdown("---")
@@ -1568,15 +1567,14 @@ elif page == "Item Registration":
     if items_err:
         st.error(f"Failed to load items: {items_err}")
 
-    # "user" role: sirf View + Add (Delete/Update nahi)
+    # "user" role: View + Add + Update (NO Delete)
     if USER_ROLE == "user":
-        tab1, tab2 = st.tabs(["View Records", "Add Item"])
-        tab3 = None
+        tab1, tab2, tab3 = st.tabs(["View Records", "Add Item", "Update"])
     else:
         tab1, tab2, tab3 = st.tabs(["View Records", "Add Item", "Update / Delete"])
 
     with tab1:
-        search = st.text_input("Search", placeholder="Item ID, Code, Grade...")
+        search = st.text_input("Search", placeholder="Item ID, Code, Name...")
         display = filter_df(items, search)
         st.dataframe(display, use_container_width=True, hide_index=True)
         st.caption(f"{len(display)} record(s)")
@@ -1594,14 +1592,17 @@ elif page == "Item Registration":
             st.markdown("**Specifications**")
             c1, c2, c3 = st.columns(3)
             with c1:
-                material_grade = st.text_input("Material Grade")
-                diameter = st.text_input("Nominal Diameter (mm)")
+                material_grade = st.text_input("Material Grade *")
+                diameter = st.text_input("Nominal Diameter (mm) *")
             with c2:
                 application = st.text_input("Application")
                 wall = st.text_input("Wall Thickness (mm)")
             with c3:
                 sdr = st.text_input("SDR")
-                color = st.text_input("Color")
+                color = st.text_input("Color *")
+            # Auto-generated Item Name preview
+            auto_name = generate_item_name(material_grade, diameter, color)
+            st.markdown(f"**Item Name (Auto-generated):** `{auto_name if auto_name else '(fill Material Grade, Diameter, Color)'}`")
             st.markdown("**Length & Unit**")
             c1, c2 = st.columns(2)
             with c1:
@@ -1612,62 +1613,75 @@ elif page == "Item Registration":
             submit = st.form_submit_button("Save Item", type="primary",
                                             use_container_width=True)
         if submit:
-            try:
-                supabase.table(ITEM_TABLE).insert({
-                    "Item_ID": next_item_id, "Item_Code": item_code.strip(),
-                    "Material_Grade": material_grade.strip(),
-                    "Application": application.strip(),
-                    "Nominal_Diameter_mm": diameter.strip(),
-                    "Wall_Thickness_mm": wall.strip(), "SDR": sdr.strip(),
-                    "Color": color.strip(), "Standard_Length": standard_length.strip(),
-                    "Unit": unit.strip()}).execute()
-                st.success(f"Item {next_item_id} saved.")
-                refresh_all()
-            except Exception as e:
-                st.error(f"Save failed: {str(e)}")
-
-    if tab3 is not None:
-        with tab3:
-            if items.empty:
-                st.info("No items available.")
+            if not item_code.strip():
+                st.error("Item Code required.")
+            elif not material_grade.strip() or not diameter.strip() or not color.strip():
+                st.error("Material Grade, Nominal Diameter aur Color zaroori hain (Item Name auto-generate ke liye).")
             else:
-                selected_id = st.selectbox("Select Item ID",
-                    items["Item_ID"].astype(str).tolist())
-                selected = items.loc[items["Item_ID"].astype(str) == selected_id].iloc[0]
-                def _v(col):
-                    v = selected.get(col)
-                    return str(v) if pd.notna(v) else ""
-                section_title("Edit Item", f"Item ID: {selected_id}")
-                with st.form("update_item_form"):
-                    c1, c2, c3 = st.columns(3)
-                    with c1:
-                        new_code = st.text_input("Item Code", value=_v("Item_Code"))
-                        new_grade = st.text_input("Material Grade", value=_v("Material_Grade"))
-                        new_application = st.text_input("Application", value=_v("Application"))
-                    with c2:
-                        new_diameter = st.text_input("Nominal Diameter (mm)", value=_v("Nominal_Diameter_mm"))
-                        new_wall = st.text_input("Wall Thickness (mm)", value=_v("Wall_Thickness_mm"))
-                        new_sdr = st.text_input("SDR", value=_v("SDR"))
-                    with c3:
-                        new_color = st.text_input("Color", value=_v("Color"))
-                        new_length = st.text_input("Standard Length", value=_v("Standard_Length"))
-                        new_unit = st.text_input("Unit", value=_v("Unit"))
-                    st.markdown("---")
-                    update = st.form_submit_button("Update Item", type="primary",
-                                                    use_container_width=True)
-                if update:
-                    try:
-                        supabase.table(ITEM_TABLE).update({
-                            "Item_Code": new_code.strip(), "Material_Grade": new_grade.strip(),
-                            "Application": new_application.strip(),
-                            "Nominal_Diameter_mm": new_diameter.strip(),
-                            "Wall_Thickness_mm": new_wall.strip(), "SDR": new_sdr.strip(),
-                            "Color": new_color.strip(), "Standard_Length": new_length.strip(),
-                            "Unit": new_unit.strip()}).eq("Item_ID", selected_id).execute()
-                        st.success("Item updated.")
-                        refresh_all()
-                    except Exception as e:
-                        st.error(f"Update failed: {str(e)}")
+                try:
+                    item_name = generate_item_name(material_grade, diameter, color)
+                    supabase.table(ITEM_TABLE).insert({
+                        "Item_ID": next_item_id, "Item_Code": item_code.strip(),
+                        "Item_Name": item_name,
+                        "Material_Grade": material_grade.strip(),
+                        "Application": application.strip(),
+                        "Nominal_Diameter_mm": diameter.strip(),
+                        "Wall_Thickness_mm": wall.strip(), "SDR": sdr.strip(),
+                        "Color": color.strip(),
+                        "Standard_Length": standard_length.strip(),
+                        "Unit": unit.strip()}).execute()
+                    st.success(f"Item {next_item_id} saved. Name: {item_name}")
+                    refresh_all()
+                except Exception as e:
+                    st.error(f"Save failed: {str(e)}")
+
+    with tab3:
+        if items.empty:
+            st.info("No items available.")
+        else:
+            selected_id = st.selectbox("Select Item ID",
+                items["Item_ID"].astype(str).tolist())
+            selected = items.loc[items["Item_ID"].astype(str) == selected_id].iloc[0]
+            def _v(col):
+                v = selected.get(col)
+                return str(v) if pd.notna(v) else ""
+            section_title("Edit Item", f"Item ID: {selected_id}")
+            with st.form("update_item_form"):
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    new_code = st.text_input("Item Code", value=_v("Item_Code"))
+                    new_grade = st.text_input("Material Grade", value=_v("Material_Grade"))
+                    new_application = st.text_input("Application", value=_v("Application"))
+                with c2:
+                    new_diameter = st.text_input("Nominal Diameter (mm)", value=_v("Nominal_Diameter_mm"))
+                    new_wall = st.text_input("Wall Thickness (mm)", value=_v("Wall_Thickness_mm"))
+                    new_sdr = st.text_input("SDR", value=_v("SDR"))
+                with c3:
+                    new_color = st.text_input("Color", value=_v("Color"))
+                    new_length = st.text_input("Standard Length", value=_v("Standard_Length"))
+                    new_unit = st.text_input("Unit", value=_v("Unit"))
+                auto_name_edit = generate_item_name(new_grade, new_diameter, new_color)
+                st.markdown(f"**Item Name (Auto-generated):** `{auto_name_edit if auto_name_edit else '(fill Material Grade, Diameter, Color)'}`")
+                st.markdown("---")
+                update = st.form_submit_button("Update Item", type="primary",
+                                                use_container_width=True)
+            if update:
+                try:
+                    item_name_edit = generate_item_name(new_grade, new_diameter, new_color)
+                    supabase.table(ITEM_TABLE).update({
+                        "Item_Code": new_code.strip(),
+                        "Item_Name": item_name_edit,
+                        "Material_Grade": new_grade.strip(),
+                        "Application": new_application.strip(),
+                        "Nominal_Diameter_mm": new_diameter.strip(),
+                        "Wall_Thickness_mm": new_wall.strip(), "SDR": new_sdr.strip(),
+                        "Color": new_color.strip(), "Standard_Length": new_length.strip(),
+                        "Unit": new_unit.strip()}).eq("Item_ID", selected_id).execute()
+                    st.success(f"Item updated. Name: {item_name_edit}")
+                    refresh_all()
+                except Exception as e:
+                    st.error(f"Update failed: {str(e)}")
+            if USER_ROLE != "user":
                 st.markdown("---")
                 if st.button("Delete Item", type="secondary"):
                     try:
@@ -2656,8 +2670,10 @@ elif page == "Analytics":
             sdf = (production["Production_Status"].fillna("Unknown")
                    .value_counts().rename_axis("Status").reset_index(name="Count"))
             sdf["Status"] = sdf["Status"].astype(str)
-            st.plotly_chart(px.pie(sdf, names="Status", values="Count", hole=0.5,
-                title="Production Status"), use_container_width=True)
+            fig = px.pie(sdf, names="Status", values="Count", hole=0.5,
+                         title="Production Status")
+            fig.update_layout(height=340, margin=dict(l=10, r=10, t=40, b=10))
+            st.plotly_chart(fig, use_container_width=True)
         with cp2:
             try:
                 pdf = production.copy()
@@ -2669,10 +2685,11 @@ elif page == "Analytics":
                     mdf = pdf.groupby("Month", as_index=False)[
                         ["Planned_Qty_m", "Good_Qty_m", "Rejected_Qty_m"]].sum()
                     mdf["Month"] = mdf["Month"].astype(str)
-                    st.plotly_chart(px.line(mdf, x="Month",
+                    fig = px.line(mdf, x="Month",
                         y=["Planned_Qty_m", "Good_Qty_m", "Rejected_Qty_m"],
-                        markers=True, title="Monthly Production Trend"),
-                        use_container_width=True)
+                        markers=True, title="Monthly Production Trend")
+                    fig.update_layout(height=340, margin=dict(l=10, r=10, t=40, b=10))
+                    st.plotly_chart(fig, use_container_width=True)
             except Exception:
                 pass
     else:
@@ -2688,9 +2705,13 @@ elif page == "Analytics":
         lc = _to_num(STOCK_LEDGER, ["Opening", "Produced", "Dispatched",
                                     "Returned", "Adjusted", "Closing"])
         lc["Item_ID"] = lc["Item_ID"].astype(str)
-        st.plotly_chart(px.bar(lc, x="Item_ID",
+        # Top 20 items only for chart (performance)
+        lc_top = lc.sort_values("Closing", ascending=False).head(20)
+        fig = px.bar(lc_top, x="Item_ID",
             y=["Opening", "Produced", "Dispatched", "Returned", "Adjusted", "Closing"],
-            barmode="group", title="Stock Ledger by Item"), use_container_width=True)
+            barmode="group", title="Top 20 Items - Stock Ledger")
+        fig.update_layout(height=380, margin=dict(l=10, r=10, t=40, b=10))
+        st.plotly_chart(fig, use_container_width=True)
         st.dataframe(STOCK_LEDGER, use_container_width=True, hide_index=True)
     else:
         empty_state("No stock ledger data.")
@@ -2714,9 +2735,11 @@ elif page == "Analytics":
                 Outstanding=("outstanding", "sum"))
             mdf["Month"] = mdf["Month"].astype(str)
             mdf = _to_num(mdf, ["Billed", "Received", "Outstanding"])
-            st.plotly_chart(px.line(mdf, x="Month",
+            fig = px.line(mdf, x="Month",
                 y=["Billed", "Received", "Outstanding"],
-                markers=True, title="Monthly Billing Trend"), use_container_width=True)
+                markers=True, title="Monthly Billing Trend")
+            fig.update_layout(height=340, margin=dict(l=10, r=10, t=40, b=10))
+            st.plotly_chart(fig, use_container_width=True)
     else:
         empty_state("No invoice data.")
 
@@ -2755,6 +2778,9 @@ elif page == "Custom Charts":
             df_chart[y] = pd.to_numeric(df_chart[y], errors="coerce").fillna(0)
         if cb != "(none)" and cb in df_chart.columns:
             df_chart[cb] = df_chart[cb].astype(str)
+        # Limit for performance
+        if len(df_chart) > 2000:
+            df_chart = df_chart.head(2000)
         fig = None
         if cht == "Bar Chart":
             fig = px.bar(df_chart, x=x, y=y, color=(cb if cb != "(none)" else None), text_auto=True)
@@ -2777,7 +2803,7 @@ elif page == "Custom Charts":
         elif cht == "Box Plot":
             fig = px.box(df_chart, x=x, y=y, color=(cb if cb != "(none)" else None))
         if fig is not None:
-            fig.update_layout(margin=dict(l=10, r=10, t=40, b=10), height=520)
+            fig.update_layout(margin=dict(l=10, r=10, t=40, b=10), height=420)
             st.plotly_chart(fig, use_container_width=True)
     except Exception as e:
         st.error(f"Chart error: {str(e)}")
