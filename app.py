@@ -40,13 +40,13 @@ INVOICE_TABLE = "Invoice"
 INVOICE_ITEMS_TABLE = "Invoice_Items"
 USERS_TABLE = "Users"
 
-ITEM_COLUMNS = ("Item_ID", "Item_Code", "Item_Name", "Material_Grade",
+ITEM_COLUMNS = ("Item_ID", "Item_Name", "Material_Grade",
     "Application", "Nominal_Diameter_mm", "Wall_Thickness_mm", "SDR",
     "Color", "Standard_Length", "Unit")
-PRODUCTION_COLUMNS = ("Production_ID", "Item_ID", "Production_Date", "Batch_No",
-    "Production_Line", "Planned_Qty_m", "Good_Qty_m",
-    "Rejected_Qty_m", "Production_Status")
-OPENING_COLUMNS = ("Opening_Stock_ID", "Item_ID", "Qty", "Entry_Date")
+PRODUCTION_COLUMNS = ("Production_ID", "Item_ID", "Item_Name",
+    "Production_Date", "Batch_No", "Production_Line",
+    "Planned_Qty_m", "Good_Qty_m", "Rejected_Qty_m", "Production_Status")
+OPENING_COLUMNS = ("Opening_Stock_ID", "Item_ID", "Item_Name", "Qty", "Entry_Date")
 PRODUCTION_QTY_COLUMNS = ("Production_ID", "Item_ID", "Qty", "Entry_Date")
 DISPATCH_COLUMNS = ("Dispatch_ID", "Item_ID", "Qty", "Entry_Date", "Reference")
 RETURN_COLUMNS = ("Return_ID", "Item_ID", "Qty", "Entry_Date", "Reference")
@@ -311,6 +311,12 @@ def build_item_lookup(items_df):
         iid = str(row.get("Item_ID", "") or "").strip()
         if not iid:
             continue
+        # Prefer Item_Name directly
+        name = str(row.get("Item_Name", "") or "").strip()
+        if name and name.lower() not in ("nan", "none", "null", "-"):
+            lookup[iid] = name
+            continue
+        # Fallback: build from parts
         parts = []
         for key in ("Material_Grade", "Nominal_Diameter_mm", "SDR", "Color"):
             val = row.get(key)
@@ -463,13 +469,13 @@ def delete_return_by_reference(challan_no):
 @st.cache_data(ttl=CACHE_TTL, show_spinner=False)
 def compute_stock_ledger(items_df, opening_df, prod_qty_df, dispatch_df, return_df, adjustment_df):
     if items_df.empty:
-        return pd.DataFrame(columns=["Item_ID", "Item_Code", "Opening", "Produced",
+        return pd.DataFrame(columns=["Item_ID", "Item_Name", "Opening", "Produced",
                                      "Dispatched", "Returned", "Adjusted", "Closing"])
     def _grp(df, name):
         if df is None or df.empty:
             return pd.DataFrame(columns=["Item_ID", name])
         return df.groupby("Item_ID", as_index=False)["Qty"].sum().rename(columns={"Qty": name})
-    base = items_df[["Item_ID", "Item_Code"]].copy()
+    base = items_df[["Item_ID", "Item_Name"]].copy()
     for df, name in [(opening_df, "Opening"), (prod_qty_df, "Produced"),
                      (dispatch_df, "Dispatched"), (return_df, "Returned"),
                      (adjustment_df, "Adjusted")]:
@@ -942,10 +948,10 @@ cursor:pointer;">Print / Save as PDF</button>
 
 
 # =========================================================
-# CRUD STOCK TABLE
+# CRUD STOCK TABLE (with Item_Name auto-fill)
 # =========================================================
 
-def crud_stock_table(table_name, df, id_col, label, items_df, load_error=None):
+def crud_stock_table(table_name, df, id_col, label, items_df, item_lookup, load_error=None):
     if load_error:
         st.error(f"Failed to load {label}: {load_error}")
     tab1, tab2, tab3 = st.tabs(["View", "Add", "Update / Delete"])
@@ -977,7 +983,9 @@ def crud_stock_table(table_name, df, id_col, label, items_df, load_error=None):
                                             use_container_width=True)
         if submit:
             try:
+                item_name_val = auto_description(selected_item, item_lookup)
                 payload = {id_col: next_id, "Item_ID": selected_item,
+                           "Item_Name": item_name_val,
                            "Qty": qty, "Entry_Date": date_str(entry_date)}
                 if table_name == DISPATCH_TABLE: payload["Reference"] = "MANUAL"
                 if table_name == RETURN_TABLE: payload["Reference"] = "MANUAL"
@@ -1023,8 +1031,10 @@ def crud_stock_table(table_name, df, id_col, label, items_df, load_error=None):
                                             use_container_width=True)
         if update:
             try:
+                item_name_val = auto_description(edit_item, item_lookup)
                 supabase.table(table_name).update({
-                    "Item_ID": edit_item, "Qty": edit_qty,
+                    "Item_ID": edit_item, "Item_Name": item_name_val,
+                    "Qty": edit_qty,
                     "Entry_Date": date_str(edit_date)}).eq(id_col, selected_id).execute()
                 st.success(f"{label} updated.")
                 refresh_all()
@@ -1562,7 +1572,7 @@ elif page == "Item Registration":
         tab1, tab2, tab3 = st.tabs(["View Records", "Add Item", "Update / Delete"])
 
     with tab1:
-        search = st.text_input("Search", placeholder="Item ID, Code, Name...")
+        search = st.text_input("Search", placeholder="Item ID, Name...")
         display = filter_df(items, search)
         st.dataframe(display, use_container_width=True, hide_index=True)
         st.caption(f"{len(display)} record(s)")
@@ -1578,15 +1588,11 @@ elif page == "Item Registration":
                 application = st.text_input("Application")
                 sdr = st.text_input("SDR")
             with c2:
-                item_code = st.text_input("Item Code")
                 diameter = st.text_input("Nominal Diameter (mm)")
                 wall = st.text_input("Wall Thickness (mm)")
                 color = st.text_input("Color")
-            c1, c2 = st.columns(2)
-            with c1:
                 standard_length = st.text_input("Standard Length")
-            with c2:
-                unit = st.text_input("Unit", value="Meter")
+            unit = st.text_input("Unit", value="Meter")
             auto_name = generate_item_name(material_grade, diameter, color)
             st.markdown(f"**Item Name (Auto):** `{auto_name if auto_name else '(auto from Grade + Diameter + Color)'}`")
             submit = st.form_submit_button("Save Item", type="primary",
@@ -1598,7 +1604,7 @@ elif page == "Item Registration":
                 try:
                     item_name = generate_item_name(material_grade, diameter, color)
                     supabase.table(ITEM_TABLE).insert({
-                        "Item_ID": next_item_id, "Item_Code": item_code.strip(),
+                        "Item_ID": next_item_id,
                         "Item_Name": item_name,
                         "Material_Grade": material_grade.strip(),
                         "Application": application.strip(),
@@ -1626,7 +1632,6 @@ elif page == "Item Registration":
             with st.form("update_item_form"):
                 c1, c2 = st.columns(2)
                 with c1:
-                    new_code = st.text_input("Item Code", value=_v("Item_Code"))
                     new_grade = st.text_input("Material Grade", value=_v("Material_Grade"))
                     new_application = st.text_input("Application", value=_v("Application"))
                     new_sdr = st.text_input("SDR", value=_v("SDR"))
@@ -1644,7 +1649,6 @@ elif page == "Item Registration":
                 try:
                     item_name_edit = generate_item_name(new_grade, new_diameter, new_color)
                     supabase.table(ITEM_TABLE).update({
-                        "Item_Code": new_code.strip(),
                         "Item_Name": item_name_edit,
                         "Material_Grade": new_grade.strip(),
                         "Application": new_application.strip(),
@@ -1708,8 +1712,11 @@ elif page == "Production":
                                                 use_container_width=True)
             if submit:
                 try:
+                    item_name_val = auto_description(selected_item, ITEM_LOOKUP)
                     supabase.table(PRODUCTION_TABLE).insert({
-                        "Production_ID": next_production_id, "Item_ID": selected_item,
+                        "Production_ID": next_production_id,
+                        "Item_ID": selected_item,
+                        "Item_Name": item_name_val,
                         "Production_Date": date_str(production_date),
                         "Batch_No": batch_no.strip(), "Production_Line": production_line,
                         "Planned_Qty_m": planned_qty, "Good_Qty_m": good_qty,
@@ -1728,10 +1735,14 @@ elif page == "Production":
             selected = production.loc[production["Production_ID"].astype(str) == selected_id].iloc[0]
             current_line = str(selected["Production_Line"]) if pd.notna(selected["Production_Line"]) else PRODUCTION_LINES[0]
             line_idx = PRODUCTION_LINES.index(current_line) if current_line in PRODUCTION_LINES else 0
+            options = get_item_options(items)
+            cur_item = str(selected["Item_ID"]) if pd.notna(selected["Item_ID"]) else ""
+            item_idx = options.index(cur_item) if cur_item in options else 0
             section_title("Edit Production")
             with st.form("update_production_form"):
                 c1, c2, c3 = st.columns(3)
                 with c1:
+                    edit_item = st.selectbox("Item ID", options, index=item_idx) if options else cur_item
                     edit_batch = st.text_input("Batch No",
                         value=str(selected["Batch_No"]) if pd.notna(selected["Batch_No"]) else "")
                     edit_line = st.selectbox("Production Line", PRODUCTION_LINES, index=line_idx)
@@ -1751,7 +1762,9 @@ elif page == "Production":
                                                 use_container_width=True)
             if update:
                 try:
+                    item_name_val = auto_description(edit_item, ITEM_LOOKUP)
                     supabase.table(PRODUCTION_TABLE).update({
+                        "Item_ID": edit_item, "Item_Name": item_name_val,
                         "Batch_No": edit_batch, "Production_Line": edit_line,
                         "Planned_Qty_m": edit_planned, "Good_Qty_m": edit_good,
                         "Rejected_Qty_m": edit_rejected,
@@ -1776,16 +1789,16 @@ elif page == "Stock Control":
                           "Return Qty", "Closing Stock"])
     with stock_tabs[0]:
         crud_stock_table(OPENING_TABLE, opening, "Opening_Stock_ID",
-                         "Opening Stock", items, opening_err)
+                         "Opening Stock", items, ITEM_LOOKUP, opening_err)
     with stock_tabs[1]:
         crud_stock_table(PRODUCTION_QTY_TABLE, prod_qty, "Production_ID",
-                         "Production Qty", items, prod_qty_err)
+                         "Production Qty", items, ITEM_LOOKUP, prod_qty_err)
     with stock_tabs[2]:
         crud_stock_table(DISPATCH_TABLE, dispatch, "Dispatch_ID",
-                         "Dispatch Qty", items, dispatch_err)
+                         "Dispatch Qty", items, ITEM_LOOKUP, dispatch_err)
     with stock_tabs[3]:
         crud_stock_table(RETURN_TABLE, return_qty, "Return_ID",
-                         "Return Qty", items, return_err)
+                         "Return Qty", items, ITEM_LOOKUP, return_err)
     with stock_tabs[4]:
         st.markdown("### Closing Stock")
         if not STOCK_LEDGER.empty:
@@ -1907,12 +1920,12 @@ elif page == "Physical Check":
         counts = {}
         for _, row in ledger.iterrows():
             iid = row["Item_ID"]
-            icode = row["Item_Code"] if pd.notna(row["Item_Code"]) else ""
+            iname = row["Item_Name"] if pd.notna(row["Item_Name"]) else ""
             sc = float(row["System_Closing"])
             c1, c2, c3 = st.columns([2, 2, 3])
             with c1:
                 st.markdown(f"**{iid}**")
-                st.caption(icode)
+                st.caption(iname)
             with c2:
                 st.metric("System Closing", f"{sc:,.0f}")
             with c3:
