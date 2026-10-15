@@ -545,7 +545,7 @@ def empty_state(msg, cta=None):
         </div>""", unsafe_allow_html=True)
 
 
-def section_title(title, subtitle=""):
+def section_title(title):
     st.markdown(f"""
         <div class="form-section">
             <div class="form-section-title">{title}</div>
@@ -656,7 +656,7 @@ if not st.session_state.logged_in:
 
 
 CURRENT_USER = st.session_state.user or {}
-USER_ROLE = CURRENT_USER.get("role", "user")
+USER_ROLE = (CURRENT_USER.get("role") or "user").strip().lower()
 USER_NAME = CURRENT_USER.get("full_name") or CURRENT_USER.get("username", "User")
 
 
@@ -973,7 +973,7 @@ def crud_stock_table(table_name, df, id_col, label, items_df, load_error=None):
             with c3:
                 entry_date = st.date_input("Entry Date", value=date.today(),
                                            key=f"ad_{table_name}")
-            submit = st.form_submit_button(f"Save", type="primary",
+            submit = st.form_submit_button("Save", type="primary",
                                             use_container_width=True)
         if submit:
             try:
@@ -1256,7 +1256,6 @@ def bulk_import_page():
     st.title("Bulk Import")
     tab1, tab2 = st.tabs(["Import Data", "Export Data"])
 
-    # "user" role: sirf Item Registration aur Opening Stock
     if USER_ROLE == "user":
         allowed_targets = ["Item Registration", "Opening Stock"]
         export_data = {
@@ -1557,8 +1556,6 @@ elif page == "Item Registration":
     if items_err:
         st.error(f"Failed to load items: {items_err}")
 
-    # Admin ("user"): sirf View + Add + Update (NO Delete)
-    # Manager: View + Add + Update + Delete
     if USER_ROLE == "user":
         tab1, tab2, tab3 = st.tabs(["View Records", "Add Item", "Update Item"])
     else:
@@ -1659,7 +1656,6 @@ elif page == "Item Registration":
                     refresh_all()
                 except Exception as e:
                     st.error(f"Update failed: {str(e)}")
-            # Delete sirf manager ke liye
             if USER_ROLE != "user":
                 st.markdown("---")
                 if st.button("Delete Item", type="secondary"):
