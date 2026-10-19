@@ -26,6 +26,7 @@ st.set_page_config(
 
 ITEM_TABLE = "Item_Registration"
 PRODUCTION_TABLE = "Production"
+RMC_TABLE = "Production_Raw_Materials"
 OPENING_TABLE = "Opening_Stock"
 PRODUCTION_QTY_TABLE = "Production_Qty"
 DISPATCH_TABLE = "Dispatch_Qty"
@@ -44,8 +45,9 @@ ITEM_COLUMNS = ("Item_ID", "Item_Name", "Material_Grade",
     "Application", "Nominal_Diameter_mm", "Wall_Thickness_mm", "SDR",
     "Color", "Standard_Length", "Unit")
 PRODUCTION_COLUMNS = ("Production_ID", "Item_ID", "Item_Name",
-    "Production_Date", "Batch_No", "Production_Line",
+    "Production_Date", "Production_Line",
     "Planned_Qty_m", "Good_Qty_m", "Rejected_Qty_m", "Production_Status")
+RMC_COLUMNS = ("id", "Production_ID", "Item_ID", "Item_Name", "RMC_Quantity", "created_at")
 OPENING_COLUMNS = ("Opening_Stock_ID", "Item_ID", "Item_Name", "Qty", "Entry_Date")
 PRODUCTION_QTY_COLUMNS = ("Production_ID", "Item_ID", "Qty", "Entry_Date")
 DISPATCH_COLUMNS = ("Dispatch_ID", "Item_ID", "Qty", "Entry_Date", "Reference")
@@ -251,6 +253,10 @@ def load_production():
                         ("Planned_Qty_m", "Good_Qty_m", "Rejected_Qty_m"))
 
 @st.cache_data(ttl=CACHE_TTL, show_spinner=False)
+def load_prod_rmc():
+    return _fetch_table(RMC_TABLE, RMC_COLUMNS, ("RMC_Quantity",))
+
+@st.cache_data(ttl=CACHE_TTL, show_spinner=False)
 def load_opening():
     return _fetch_table(OPENING_TABLE, OPENING_COLUMNS, ("Qty",))
 
@@ -311,12 +317,10 @@ def build_item_lookup(items_df):
         iid = str(row.get("Item_ID", "") or "").strip()
         if not iid:
             continue
-        # Prefer Item_Name directly
         name = str(row.get("Item_Name", "") or "").strip()
         if name and name.lower() not in ("nan", "none", "null", "-"):
             lookup[iid] = name
             continue
-        # Fallback: build from parts
         parts = []
         for key in ("Material_Grade", "Nominal_Diameter_mm", "SDR", "Color"):
             val = row.get(key)
@@ -672,6 +676,7 @@ USER_NAME = CURRENT_USER.get("full_name") or CURRENT_USER.get("username", "User"
 
 items, items_err = load_items()
 production, production_err = load_production()
+prod_rmc, prod_rmc_err = load_prod_rmc()
 opening, opening_err = load_opening()
 prod_qty, prod_qty_err = load_prod_qty()
 dispatch, dispatch_err = load_dispatch()
@@ -948,7 +953,7 @@ cursor:pointer;">Print / Save as PDF</button>
 
 
 # =========================================================
-# CRUD STOCK TABLE (with Item_Name auto-fill)
+# CRUD STOCK TABLE
 # =========================================================
 
 def crud_stock_table(table_name, df, id_col, label, items_df, item_lookup, load_error=None):
@@ -1232,6 +1237,78 @@ def reset_invoice_rows(key_prefix):
         "description": "", "quantity": 0.0, "unit": "Meter",
         "price_per_unit": 0.0, "amount": 0.0}]
     st.session_state[f"{key_prefix}_counter"] = 1
+
+
+# =========================================================
+# RMC EDITOR (NEW)
+# =========================================================
+def rmc_editor(key_prefix):
+    state_key = f"{key_prefix}_rmc_rows"
+    counter_key = f"{key_prefix}_rmc_counter"
+
+    if state_key not in st.session_state:
+        st.session_state[state_key] = [
+            {"id": 1, "item_id": "(none)", "rmc_qty": 0.0}
+        ]
+        st.session_state[counter_key] = 1
+
+    rows = st.session_state[state_key]
+    
+    item_name_opts = []
+    if not items.empty:
+        for _, r in items.iterrows():
+            iname = str(r.get("Item_Name", ""))
+            iid = str(r.get("Item_ID", ""))
+            if iname and iname.lower() not in ("nan", "none", "null", "-"):
+                item_name_opts.append(f"{iname} ({iid})")
+    
+    hc1, hc2, hc3, hc4 = st.columns([0.5, 4, 2, 1])
+    with hc1: st.markdown("**#**")
+    with hc2: st.markdown("**Search Raw Material**")
+    with hc3: st.markdown("**RMC Quantity**")
+    with hc4: st.markdown("**Action**")
+
+    to_remove = None
+    for idx, row in enumerate(rows):
+        rid = row["id"]
+        c1, c2, c3, c4 = st.columns([0.5, 4, 2, 1])
+        
+        with c1: st.markdown(f"**{idx + 1}**")
+        with c2:
+            opts = ["(none)"] + item_name_opts
+            cur_id = row.get("item_id", "(none)")
+            cur_label = next((opt for opt in item_name_opts if cur_id in opt), "(none)")
+            pos = opts.index(cur_label) if cur_label in opts else 0
+            new_label = st.selectbox("Raw Material", opts, index=pos, key=f"{key_prefix}_rmc_item_{rid}", label_visibility="collapsed")
+            new_id = new_label.split("(")[-1].replace(")", "").strip() if new_label != "(none)" else "(none)"
+            
+            if new_id != cur_id:
+                row["item_id"] = new_id
+                st.rerun()
+            else:
+                row["item_id"] = new_id
+                
+        with c3:
+            row["rmc_qty"] = st.number_input("RMC Qty", min_value=0.0, value=float(row.get("rmc_qty", 0.0)), step=1.0, key=f"{key_prefix}_rmc_qty_{rid}", label_visibility="collapsed")
+        with c4:
+            if len(rows) > 1 and st.button("✖", key=f"{key_prefix}_rmc_rm_{rid}"): to_remove = idx
+
+    if to_remove is not None:
+        st.session_state[state_key].pop(to_remove)
+        st.rerun()
+
+    if len(st.session_state[state_key]) < 3:
+        if st.button("+ Add Raw Material", key=f"{key_prefix}_add_rmc"):
+            st.session_state[counter_key] += 1
+            st.session_state[state_key].append({"id": st.session_state[counter_key], "item_id": "(none)", "rmc_qty": 0.0})
+            st.rerun()
+    else: st.caption("Maximum 3 raw materials allowed.")
+
+    return st.session_state[state_key]
+
+def reset_rmc_rows(key_prefix):
+    st.session_state[f"{key_prefix}_rmc_rows"] = [{"id": 1, "item_id": "(none)", "rmc_qty": 0.0}]
+    st.session_state[f"{key_prefix}_rmc_counter"] = 1
 
 
 IMPORT_TARGETS = {
@@ -1697,9 +1774,8 @@ elif page == "Production":
                     selected_item = st.selectbox("Item ID", options)
                 with c2:
                     production_date = st.date_input("Production Date", value=date.today())
-                    batch_no = st.text_input("Batch No")
-                with c3:
                     production_line = st.selectbox("Production Line", PRODUCTION_LINES)
+                with c3:
                     status = st.selectbox("Production Status", PRODUCTION_STATUSES)
                 c1, c2, c3 = st.columns(3)
                 with c1:
@@ -1708,6 +1784,10 @@ elif page == "Production":
                     good_qty = st.number_input("Good Quantity", min_value=0, value=0, step=1)
                 with c3:
                     rejected_qty = st.number_input("Rejected Quantity", min_value=0, value=0, step=1)
+                
+                st.markdown("---")
+                rm_rows = rmc_editor("add")
+                
                 submit = st.form_submit_button("Save Production", type="primary",
                                                 use_container_width=True)
             if submit:
@@ -1718,11 +1798,18 @@ elif page == "Production":
                         "Item_ID": selected_item,
                         "Item_Name": item_name_val,
                         "Production_Date": date_str(production_date),
-                        "Batch_No": batch_no.strip(), "Production_Line": production_line,
+                        "Production_Line": production_line,
                         "Planned_Qty_m": planned_qty, "Good_Qty_m": good_qty,
                         "Rejected_Qty_m": rejected_qty,
                         "Production_Status": status}).execute()
+                    
+                    valid_rm = [r for r in rm_rows if r["item_id"] != "(none)" and r["rmc_qty"] > 0]
+                    if valid_rm:
+                        rm_payload = [{"Production_ID": next_production_id, "Item_ID": r["item_id"], "Item_Name": auto_description(r["item_id"], ITEM_LOOKUP), "RMC_Quantity": r["rmc_qty"]} for r in valid_rm]
+                        supabase.table(RMC_TABLE).insert(rm_payload).execute()
+                        
                     st.success(f"Production {next_production_id} saved.")
+                    reset_rmc_rows("add")
                     refresh_all()
                 except Exception as e:
                     st.error(f"Save failed: {str(e)}")
@@ -1743,8 +1830,6 @@ elif page == "Production":
                 c1, c2, c3 = st.columns(3)
                 with c1:
                     edit_item = st.selectbox("Item ID", options, index=item_idx) if options else cur_item
-                    edit_batch = st.text_input("Batch No",
-                        value=str(selected["Batch_No"]) if pd.notna(selected["Batch_No"]) else "")
                     edit_line = st.selectbox("Production Line", PRODUCTION_LINES, index=line_idx)
                 with c2:
                     edit_planned = st.number_input("Planned Quantity", min_value=1,
@@ -1765,7 +1850,7 @@ elif page == "Production":
                     item_name_val = auto_description(edit_item, ITEM_LOOKUP)
                     supabase.table(PRODUCTION_TABLE).update({
                         "Item_ID": edit_item, "Item_Name": item_name_val,
-                        "Batch_No": edit_batch, "Production_Line": edit_line,
+                        "Production_Line": edit_line,
                         "Planned_Qty_m": edit_planned, "Good_Qty_m": edit_good,
                         "Rejected_Qty_m": edit_rejected,
                         "Production_Status": edit_status}).eq("Production_ID", selected_id).execute()
@@ -1773,6 +1858,16 @@ elif page == "Production":
                     refresh_all()
                 except Exception as e:
                     st.error(f"Update failed: {str(e)}")
+            
+            st.markdown("---")
+            rm = prod_rmc[prod_rmc["Production_ID"] == selected_id]
+            if not rm.empty:
+                st.dataframe(rm[["Item_ID", "Item_Name", "RMC_Quantity"]], hide_index=True)
+                if st.button("Delete Raw Materials", type="secondary"):
+                    supabase.table(RMC_TABLE).delete().eq("Production_ID", selected_id).execute()
+                    st.success("Deleted.")
+                    refresh_all()
+            
             if st.button("Delete Production"):
                 try:
                     supabase.table(PRODUCTION_TABLE).delete().eq(
@@ -2792,4 +2887,4 @@ elif page == "Data Management":
 
 
 st.markdown("---")
-st.caption("Flex Head Industries Pvt Ltd | ERP Management System")    
+st.caption("Flex Head Industries Pvt Ltd | ERP Management System")
