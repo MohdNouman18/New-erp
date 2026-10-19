@@ -97,7 +97,7 @@ COMPANY_ADDR_LINE3 = ("TEL: 021-35162930, 021-35162931, 0335-1279370, 0316-12397
 
 
 # =========================================================
-# ROLE -> MODULES (Sirf 2 roles: admin, manager)
+# ROLE -> MODULES
 # =========================================================
 
 ROLE_MODULES = {
@@ -109,7 +109,6 @@ ROLE_MODULES = {
         "Custom Charts", "Data Management",
     ],
 }
-
 
 # =========================================================
 # CSS
@@ -1240,7 +1239,7 @@ def reset_invoice_rows(key_prefix):
 
 
 # =========================================================
-# RMC EDITOR (NEW)
+# RMC EDITOR (Fixed)
 # =========================================================
 def rmc_editor(key_prefix):
     state_key = f"{key_prefix}_rmc_rows"
@@ -1767,30 +1766,30 @@ elif page == "Production":
             st.warning("Add an item first.")
         else:
             options = get_item_options(items)
-            with st.form("add_production_form"):
-                c1, c2, c3 = st.columns(3)
-                with c1:
-                    st.text_input("Production ID (Auto)", value=next_production_id, disabled=True)
-                    selected_item = st.selectbox("Item ID", options)
-                with c2:
-                    production_date = st.date_input("Production Date", value=date.today())
-                    production_line = st.selectbox("Production Line", PRODUCTION_LINES)
-                with c3:
-                    status = st.selectbox("Production Status", PRODUCTION_STATUSES)
-                c1, c2, c3 = st.columns(3)
-                with c1:
-                    planned_qty = st.number_input("Planned Quantity", min_value=1, value=1, step=1)
-                with c2:
-                    good_qty = st.number_input("Good Quantity", min_value=0, value=0, step=1)
-                with c3:
-                    rejected_qty = st.number_input("Rejected Quantity", min_value=0, value=0, step=1)
-                
-                st.markdown("---")
-                rm_rows = rmc_editor("add")
-                
-                submit = st.form_submit_button("Save Production", type="primary",
-                                                use_container_width=True)
-            if submit:
+            
+            # Form hata diya hai taake buttons kaam kar sakein
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                st.text_input("Production ID (Auto)", value=next_production_id, disabled=True)
+                selected_item = st.selectbox("Item ID", options)
+            with c2:
+                production_date = st.date_input("Production Date", value=date.today())
+                production_line = st.selectbox("Production Line", PRODUCTION_LINES)
+            with c3:
+                status = st.selectbox("Production Status", PRODUCTION_STATUSES)
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                planned_qty = st.number_input("Planned Quantity", min_value=1, value=1, step=1)
+            with c2:
+                good_qty = st.number_input("Good Quantity", min_value=0, value=0, step=1)
+            with c3:
+                rejected_qty = st.number_input("Rejected Quantity", min_value=0, value=0, step=1)
+            
+            st.markdown("---")
+            rm_rows = rmc_editor("add")
+            
+            st.markdown("---")
+            if st.button("Save Production", type="primary", use_container_width=True):
                 try:
                     item_name_val = auto_description(selected_item, ITEM_LOOKUP)
                     supabase.table(PRODUCTION_TABLE).insert({
