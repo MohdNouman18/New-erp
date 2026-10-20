@@ -750,11 +750,42 @@ font-size:18px;letter-spacing:3px;padding:10px 0;margin:10px 0 12px 0;}}
 .challan-page .stamp-box{{width:180px;height:90px;border:1.5px dashed #555;
 display:flex;align-items:center;justify-content:center;color:#888;font-size:11px;font-weight:700;}}
 {extra_css}
-@media print{{body *{{visibility:hidden;}}
-#challan-print,#challan-print *{{visibility:visible;}}
-#challan-print{{position:absolute;left:0;top:0;width:100%;padding:0;font-size:11px;}}
-@page{{margin:10mm;size:A4 portrait;}}}}"""
-
+@media print{{
+  body *{{visibility:hidden;}}
+  #challan-print, #challan-print *{{visibility:visible;}}
+  #challan-print{{
+      position:absolute;left:0;top:0;width:100%;padding:0;
+      font-size:10px; /* Chhota font taake zyada data aaye */
+  }}
+  #challan-print .hdr-flex{{margin-bottom:4px;padding-bottom:6px;gap:8px;}}
+  #challan-print .logo-left{{width:90px;}}
+  #challan-print .logo-left img, #challan-print .logo-left svg{{width:80px;}}
+  #challan-print .letterhead{{padding-right:90px;}}
+  #challan-print .cname{{font-size:16px;margin:0 0 2px 0;}}
+  #challan-print .caddr{{font-size:8px;line-height:1.2;}}
+  #challan-print .meta-row{{font-size:9px;margin:4px 0 6px 0;padding:2px 0;}}
+  #challan-print .cust-box{{padding:4px 8px;margin:4px 0 6px 0;}}
+  #challan-print .cust-grid{{font-size:9px;gap:2px 12px;}}
+  #challan-print .bar{{font-size:14px;padding:5px 0;margin:4px 0 6px 0;}}
+  
+  /* Table ko A4 par fit karne ke liye */
+  #challan-print table{{font-size:9px;}}
+  #challan-print th, #challan-print td{{padding:2px 4px;font-size:9px;height:16px;}}
+  #challan-print th{{padding:4px;font-size:10px;}}
+  
+  /* Footer (Signatures) ki jagah kam ki taake upar aa jaye */
+  #challan-print .ftr{{margin-top:20px;font-size:9px;}}
+  #challan-print .sig-value{{min-height:14px;font-size:10px;padding-top:2px;}}
+  #challan-print .stamp-area{{margin-top:10px;}}
+  #challan-print .stamp-box{{width:120px;height:60px;font-size:9px;}}
+  
+  /* A4 Page setup */
+  @page{{margin: 8mm; size: A4 portrait;}}
+  
+  /* Page break ko rokne ke liye */
+  #challan-print tr{{page-break-inside: avoid;}}
+}}
+"""
 
 def build_challan_html(header_row, items_df, challan_title="DELIVERY CHALLAN"):
     challan_no = header_row.get("challan_no", "") or ""
