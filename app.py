@@ -625,12 +625,9 @@ def render_login_page():
     c1, c2, c3 = st.columns([1, 1.2, 1])
     with c2:
         st.markdown("<br><br>", unsafe_allow_html=True)
-        if os.path.exists("logo.png"):
+        if os.path.exists("new_logo.png"):
             with st.columns([1, 1, 1])[1]:
-                st.image("logo.png")
-        elif os.path.exists("logo.jpg"):
-            with st.columns([1, 1, 1])[1]:
-                st.image("logo.jpg")
+                st.image("new_logo.png")
         st.markdown("""
             <div style="text-align:center; margin: 12px 0 26px 0;">
                 <div style="font-size: 22px; font-weight: 800;
@@ -1557,10 +1554,8 @@ def bulk_import_page():
 # =========================================================
 
 with st.sidebar:
-    if os.path.exists("logo.png"):
-        st.image("logo.png", use_container_width=True)
-    elif os.path.exists("logo.jpg"):
-        st.image("logo.jpg", use_container_width=True)
+    if os.path.exists("new_logo.png"):
+        st.image("new_logo.png", use_container_width=True)
     st.markdown("""
         <div style="text-align: center; padding: 4px 0 12px 0;">
             <div style="font-size: 15px; font-weight: 700; letter-spacing: 0.5px;">
