@@ -88,11 +88,11 @@ PRODUCTION_STATUSES = ["Completed", "In Progress", "Pending", "Rejected"]
 ADJUSTMENT_REASONS = ["Physical Check", "Damage", "Loss", "Found", "Other"]
 PAYMENT_MODES = ["Cash", "Cheque", "Pay Order", "Online Transfer", "Credit"]
 
-COMPANY_NAME = "FLEX HEAD INDUSTRIES (PVT) LTD"
-COMPANY_ADDR_LINE1 = ("Manufacturer of Flex PPRC & HDPE Pressure pipes")
+COMPANY_NAME = "FLEX HEAD INDUSTRIES (PVT.) LTD."
+COMPANY_ADDR_LINE1 = ("Manufacturer of Flex PPRC & HDPE Pressure Pipes")
 COMPANY_ADDR_LINE2 = ("Factory Address: Plot no G-101, S.I.T.E Phase 2, Karachi.")
 COMPANY_ADDR_LINE3 = ("Head Office: FL-3/19, Block 4, Gulshan e Iqbal, Karachi.")
-COMPANY_ADDR_LINE4 = ("Tel: 021 34811900 | 021 34989990 | Email: flexheadpipe@gmail.com")
+COMPANY_ADDR_LINE4 = ("Tel: 021 34811900, 021 34989990 | Email: flexheadpipe@gmail.com")
 
 # =========================================================
 # ROLE -> MODULES
