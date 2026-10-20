@@ -709,6 +709,7 @@ def _letterhead_block():
       <div class="caddr-line">{COMPANY_ADDR_LINE1}</div>
       <div class="caddr-line">{COMPANY_ADDR_LINE2}</div>
       <div class="caddr-line">{COMPANY_ADDR_LINE3}</div>
+      <div class="caddr-line">{COMPANY_ADDR_LINE4}</div>
     </div>
   </div>
 </div>"""
