@@ -88,13 +88,10 @@ PRODUCTION_STATUSES = ["Completed", "In Progress", "Pending", "Rejected"]
 ADJUSTMENT_REASONS = ["Physical Check", "Damage", "Loss", "Found", "Other"]
 PAYMENT_MODES = ["Cash", "Cheque", "Pay Order", "Online Transfer", "Credit"]
 
-COMPANY_NAME = "FLEX HEAD INDUSTRIES PVT LTD"
-COMPANY_ADDR_LINE1 = ("M-308/2, KCHS, 4th Floor, Plot No. 01, Main Korangi Road, "
-    "Korangi Industrial Area, Karachi - 74900, Pakistan")
-COMPANY_ADDR_LINE2 = ("HEAD OFFICE: 4.5 KM, F.E.H.S., Block-4, Karachi. "
-    "PH: 021-35090651-52, 021-35000653-54")
-COMPANY_ADDR_LINE3 = ("TEL: 021-35162930, 021-35162931, 0335-1279370, 0316-1239770")
-
+COMPANY_NAME = "FLEX HEAD INDUSTRIES (PVT) LTD"
+COMPANY_ADDR_LINE1 = ("Factory Address: Plot no G-101, S.I.T.E Phase 2, Karachi.")
+COMPANY_ADDR_LINE2 = ("Head Office: FL-3/19, Block 4, Gulshan e Iqbal, Karachi.")
+COMPANY_ADDR_LINE3 = ("Contact: 021 34811900 | 021 34989990 | flexheadpipe@gmail.com")
 
 # =========================================================
 # ROLE -> MODULES
