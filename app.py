@@ -65,7 +65,7 @@ RETURN_CHALLAN_COLUMNS = CHALLAN_COLUMNS
 RETURN_CHALLAN_ITEMS_COLUMNS = CHALLAN_ITEMS_COLUMNS
 INVOICE_COLUMNS = ("invoice_id", "invoice_no", "invoice_date", "customer_name",
     "contact_detail", "dc_id", "sales_head", "bank", "payment_mode",
-    "cartage", "amount_received", "current_bill_amt", "outstanding",
+    "cartage", "amount_received", "current_bill_amt", "Invoice_Total", "Balance_Amount",
     "remarks", "prepared_by", "received_by", "authorized_signatory",
     "created_at")
 INVOICE_ITEMS_COLUMNS = ("invoice_item_id", "invoice_id", "sr_no", "item_id",
@@ -297,7 +297,7 @@ def load_return_challan_items():
 @st.cache_data(ttl=CACHE_TTL, show_spinner=False)
 def load_invoices():
     return _fetch_table(INVOICE_TABLE, INVOICE_COLUMNS,
-                        ("cartage", "amount_received", "current_bill_amt", "outstanding"))
+                        ("cartage", "amount_received", "current_bill_amt", "Invoice_Total", "Balance_Amount"))
 
 @st.cache_data(ttl=CACHE_TTL, show_spinner=False)
 def load_invoice_items():
@@ -877,7 +877,8 @@ def build_invoice_html(header_row, items_df, challans_df):
     cartage = float(header_row.get("cartage", 0) or 0)
     amount_received = float(header_row.get("amount_received", 0) or 0)
     current_bill_amt = float(header_row.get("current_bill_amt", 0) or 0)
-    outstanding = float(header_row.get("outstanding", 0) or 0)
+    invoice_total = float(header_row.get("Invoice_Total", 0) or 0)
+    balance_amt = float(header_row.get("Balance_Amount", 0) or 0)
     remarks = _clean(header_row.get("remarks", ""))
     def _money(v):
         try: return f"{float(v):,.2f}"
@@ -946,9 +947,9 @@ def build_invoice_html(header_row, items_df, challans_df):
 <div class="totals-box"><div class="totals-grid">
 <div class="tot-row"><span>Total Items Amount:</span><b>{_money(total_amount)}</b></div>
 <div class="tot-row"><span>Cartage:</span><b>{_money(cartage)}</b></div>
-<div class="tot-row grand-total"><span>Current Bill Amount:</span><b>{_money(current_bill_amt)}</b></div>
-<div class="tot-row"><span>Amount Received:</span><b>{_money(amount_received)}</b></div>
-<div class="tot-row"><span>Outstanding:</span><b>{_money(outstanding)}</b></div>
+<div class="tot-row grand-total"><span>Invoice Total:</span><b>{_money(invoice_total)}</b></div>
+<div class="tot-row"><span>Paid Amount:</span><b>{_money(amount_received)}</b></div>
+<div class="tot-row"><span>Balance Amount:</span><b>{_money(balance_amt)}</b></div>
 </div></div>
 <div class="cust-box" style="margin-top:10px;">
 <div class="cust-grid">
@@ -1792,7 +1793,6 @@ elif page == "Production":
         else:
             options = get_item_options(items)
             
-            # Form hata diya hai taake buttons kaam kar sakein
             c1, c2, c3 = st.columns(3)
             with c1:
                 st.text_input("Production ID (Auto)", value=next_production_id, disabled=True)
@@ -2588,10 +2588,9 @@ elif page == "Invoice":
             inv_pay_mode = st.selectbox("Payment Mode", PAYMENT_MODES, key="inv_pay")
             inv_cartage = st.number_input("Cartage", min_value=0.0, value=0.0,
                                            step=0.01, format="%.2f", key="inv_cart")
-            inv_amt_recv = st.number_input("Amount Received", min_value=0.0,
+            inv_amt_recv = st.number_input("Paid Amount", min_value=0.0,
                                             value=0.0, step=0.01, format="%.2f", key="inv_amt_recv")
-            inv_outstanding = st.number_input("Outstanding", min_value=0.0,
-                                               value=0.0, step=0.01, format="%.2f", key="inv_out")
+        
         section_title("Signature Fields")
         csig1, csig2, csig3 = st.columns(3)
         with csig1:
@@ -2601,13 +2600,18 @@ elif page == "Invoice":
         with csig3:
             inv_auth_sig = st.text_input("Authorized Signatory", key="inv_auth")
         inv_remarks = st.text_area("Remarks", height=70, key="inv_remarks")
+        
         section_title("Items")
         item_rows_inv = invoice_items_editor("create_inv", items, ITEM_LOOKUP)
+        
         items_total = sum(float(r.get("quantity", 0)) * float(r.get("price_per_unit", 0))
                           for r in item_rows_inv)
-        auto_bill = items_total + float(inv_cartage)
+        inv_total = items_total + float(inv_cartage)
+        balance = inv_total - float(inv_amt_recv)
+        
         st.info(f"Items: Rs. {items_total:,.2f} | Cartage: Rs. {float(inv_cartage):,.2f} | "
-                f"Bill: Rs. {auto_bill:,.2f}")
+                f"Invoice Total: Rs. {inv_total:,.2f} | Balance Amount: Rs. {balance:,.2f}")
+        
         if st.button("Save Invoice", type="primary",
                      key="create_btn_inv", use_container_width=True):
             if not inv_customer.strip():
@@ -2629,8 +2633,9 @@ elif page == "Invoice":
                             "payment_mode": inv_pay_mode,
                             "cartage": float(inv_cartage),
                             "amount_received": float(inv_amt_recv),
-                            "current_bill_amt": float(auto_bill),
-                            "outstanding": float(inv_outstanding),
+                            "current_bill_amt": float(inv_total),
+                            "Invoice_Total": float(inv_total),
+                            "Balance_Amount": float(balance),
                             "remarks": inv_remarks.strip() or None,
                             "prepared_by": inv_prepared_by.strip() or None,
                             "received_by": inv_received_by.strip() or None,
@@ -2687,15 +2692,15 @@ elif page == "Invoice":
                     ecart_inv = st.number_input("Cartage", min_value=0.0,
                         value=float(sel_row_inv.get("cartage", 0) or 0),
                         step=0.01, format="%.2f", key="ecart_inv")
-                    eamt_inv = st.number_input("Amount Received", min_value=0.0,
+                    eamt_inv = st.number_input("Paid Amount", min_value=0.0,
                         value=float(sel_row_inv.get("amount_received", 0) or 0),
                         step=0.01, format="%.2f", key="eamt_inv")
-                    ebil_inv = st.number_input("Bill Amount", min_value=0.0,
-                        value=float(sel_row_inv.get("current_bill_amt", 0) or 0),
+                    ebil_inv = st.number_input("Invoice Total", min_value=0.0,
+                        value=float(sel_row_inv.get("Invoice_Total", 0) or 0),
                         step=0.01, format="%.2f", key="ebil_inv")
-                    eout_inv = st.number_input("Outstanding", min_value=0.0,
-                        value=float(sel_row_inv.get("outstanding", 0) or 0),
-                        step=0.01, format="%.2f", key="eout_inv")
+                    ebal_inv = st.number_input("Balance Amount", min_value=0.0,
+                        value=float(sel_row_inv.get("Balance_Amount", 0) or 0),
+                        step=0.01, format="%.2f", key="ebal_inv")
                 cs1, cs2, cs3 = st.columns(3)
                 with cs1:
                     eprep = st.text_input("Prepared By", value=_v_inv("prepared_by"), key="eprep_inv")
@@ -2714,7 +2719,8 @@ elif page == "Invoice":
                         "sales_head": esh_inv.strip() or None,
                         "bank": ebank_inv.strip() or None, "payment_mode": epay_inv,
                         "cartage": float(ecart_inv), "amount_received": float(eamt_inv),
-                        "current_bill_amt": float(ebil_inv), "outstanding": float(eout_inv),
+                        "current_bill_amt": float(ebil_inv), "Invoice_Total": float(ebil_inv),
+                        "Balance_Amount": float(ebal_inv),
                         "prepared_by": eprep.strip() or None,
                         "received_by": erecv.strip() or None,
                         "authorized_signatory": eauth.strip() or None,
@@ -2801,11 +2807,11 @@ elif page == "Analytics":
     if not invoices.empty:
         inv = invoices.copy()
         inv["invoice_date"] = pd.to_datetime(inv["invoice_date"], errors="coerce")
-        inv = _to_num(inv, ["current_bill_amt", "amount_received", "outstanding", "cartage"])
+        inv = _to_num(inv, ["current_bill_amt", "amount_received", "Balance_Amount", "cartage"])
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Total Billed", f"Rs. {inv['current_bill_amt'].sum():,.2f}")
         c2.metric("Received", f"Rs. {inv['amount_received'].sum():,.2f}")
-        c3.metric("Outstanding", f"Rs. {inv['outstanding'].sum():,.2f}")
+        c3.metric("Balance Amount", f"Rs. {inv['Balance_Amount'].sum():,.2f}")
         c4.metric("Cartage", f"Rs. {inv['cartage'].sum():,.2f}")
         inv_dated = inv.dropna(subset=["invoice_date"]).copy()
         if not inv_dated.empty:
@@ -2813,11 +2819,11 @@ elif page == "Analytics":
             mdf = inv_dated.groupby("Month", as_index=False).agg(
                 Billed=("current_bill_amt", "sum"),
                 Received=("amount_received", "sum"),
-                Outstanding=("outstanding", "sum"))
+                Balance=("Balance_Amount", "sum"))
             mdf["Month"] = mdf["Month"].astype(str)
-            mdf = _to_num(mdf, ["Billed", "Received", "Outstanding"])
+            mdf = _to_num(mdf, ["Billed", "Received", "Balance"])
             fig = px.line(mdf, x="Month",
-                y=["Billed", "Received", "Outstanding"],
+                y=["Billed", "Received", "Balance"],
                 markers=True, title="Monthly Billing Trend")
             fig.update_layout(height=340, margin=dict(l=10, r=10, t=40, b=10))
             st.plotly_chart(fig, use_container_width=True)
@@ -2911,4 +2917,4 @@ elif page == "Data Management":
 
 
 st.markdown("---")
-st.caption("Flex Head Industries Pvt Ltd | ERP Management System")
+st.caption("Flex Head Industries (Pvt.) Ltd. | ERP Management System")
