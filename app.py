@@ -65,7 +65,7 @@ RETURN_CHALLAN_COLUMNS = CHALLAN_COLUMNS
 RETURN_CHALLAN_ITEMS_COLUMNS = CHALLAN_ITEMS_COLUMNS
 INVOICE_COLUMNS = ("invoice_id", "invoice_no", "invoice_date", "customer_name",
     "contact_detail", "dc_id", "sales_head", "bank", "payment_mode",
-    "cartage", "amount_received", "current_bill_amt", "Invoice_Total", "Balance_Amount",
+    "cartage", "amount_received", "current_bill_amt", "Invoice_Total", "Total_Amount", "Balance_Amount",
     "remarks", "prepared_by", "received_by", "authorized_signatory",
     "created_at")
 INVOICE_ITEMS_COLUMNS = ("invoice_item_id", "invoice_id", "sr_no", "item_id",
@@ -297,7 +297,7 @@ def load_return_challan_items():
 @st.cache_data(ttl=CACHE_TTL, show_spinner=False)
 def load_invoices():
     return _fetch_table(INVOICE_TABLE, INVOICE_COLUMNS,
-                        ("cartage", "amount_received", "current_bill_amt", "Invoice_Total", "Balance_Amount"))
+                        ("cartage", "amount_received", "current_bill_amt", "Invoice_Total", "Total_Amount", "Balance_Amount"))
 
 @st.cache_data(ttl=CACHE_TTL, show_spinner=False)
 def load_invoice_items():
@@ -883,6 +883,7 @@ def build_invoice_html(header_row, items_df, challans_df):
     cartage = float(header_row.get("cartage", 0) or 0)
     paid_amount = float(header_row.get("amount_received", 0) or 0)
     invoice_total = float(header_row.get("Invoice_Total", 0) or 0)
+    total_amount = float(header_row.get("Total_Amount", 0) or 0)
     balance_amt = float(header_row.get("Balance_Amount", 0) or 0)
 
     def _money(v):
@@ -978,8 +979,9 @@ def build_invoice_html(header_row, items_df, challans_df):
   <div class="totals-grid" style="grid-template-columns: 1fr 1fr;">
     <div></div>
     <div>
+        <div class="tot-row"><span>Invoice Amount:</span><b>{_money(invoice_total)}</b></div>
         <div class="tot-row"><span>Cartage:</span><b>{_money(cartage)}</b></div>
-        <div class="tot-row grand-total"><span>Invoice Total:</span><b>{_money(invoice_total)}</b></div>
+        <div class="tot-row grand-total"><span>Total Amount:</span><b>{_money(total_amount)}</b></div>
         <div class="tot-row"><span>Paid Amount:</span><b>{_money(paid_amount)}</b></div>
         <div class="tot-row"><span>Balance Amount:</span><b>{_money(balance_amt)}</b></div>
     </div>
@@ -2636,11 +2638,12 @@ elif page == "Invoice":
         
         items_total = sum(float(r.get("quantity", 0)) * float(r.get("price_per_unit", 0))
                           for r in item_rows_inv)
-        inv_total = items_total + float(inv_cartage)
-        balance = inv_total - float(inv_amt_recv)
+        inv_total = items_total
+        total_amount = inv_total + float(inv_cartage)
+        balance = total_amount - float(inv_amt_recv)
         
-        st.info(f"Items: Rs. {items_total:,.2f} | Cartage: Rs. {float(inv_cartage):,.2f} | "
-                f"Invoice Total: Rs. {inv_total:,.2f} | Balance Amount: Rs. {balance:,.2f}")
+        st.info(f"Invoice Amount: Rs. {inv_total:,.2f} | Cartage: Rs. {float(inv_cartage):,.2f} | "
+                f"Total Amount: Rs. {total_amount:,.2f} | Balance: Rs. {balance:,.2f}")
         
         if st.button("Save Invoice", type="primary",
                      key="create_btn_inv", use_container_width=True):
@@ -2665,6 +2668,7 @@ elif page == "Invoice":
                             "amount_received": float(inv_amt_recv),
                             "current_bill_amt": float(inv_total),
                             "Invoice_Total": float(inv_total),
+                            "Total_Amount": float(total_amount),
                             "Balance_Amount": float(balance),
                             "remarks": inv_remarks.strip() or None,
                             "prepared_by": inv_prepared_by.strip() or None,
@@ -2728,6 +2732,9 @@ elif page == "Invoice":
                     ebil_inv = st.number_input("Invoice Total", min_value=0.0,
                         value=float(sel_row_inv.get("Invoice_Total", 0) or 0),
                         step=0.01, format="%.2f", key="ebil_inv")
+                    etot_inv = st.number_input("Total Amount", min_value=0.0,
+                        value=float(sel_row_inv.get("Total_Amount", 0) or 0),
+                        step=0.01, format="%.2f", key="etot_inv")
                     ebal_inv = st.number_input("Balance Amount", min_value=0.0,
                         value=float(sel_row_inv.get("Balance_Amount", 0) or 0),
                         step=0.01, format="%.2f", key="ebal_inv")
@@ -2750,6 +2757,7 @@ elif page == "Invoice":
                         "bank": ebank_inv.strip() or None, "payment_mode": epay_inv,
                         "cartage": float(ecart_inv), "amount_received": float(eamt_inv),
                         "current_bill_amt": float(ebil_inv), "Invoice_Total": float(ebil_inv),
+                        "Total_Amount": float(etot_inv),
                         "Balance_Amount": float(ebal_inv),
                         "prepared_by": eprep.strip() or None,
                         "received_by": erecv.strip() or None,
