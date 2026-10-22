@@ -853,16 +853,23 @@ def build_challan_html(header_row, items_df, challan_title="DELIVERY CHALLAN"):
 def build_invoice_html(header_row, items_df, challans_df):
     invoice_no = header_row.get("invoice_no", "") or ""
     invoice_date = fmt_date_only(header_row.get("invoice_date", ""))
+    
     def _clean(v):
         if v is None: return ""
         s = str(v).strip()
         return "" if s.lower() in ("nan", "none", "null") else s
+        
     customer_name = _clean(header_row.get("customer_name", ""))
     contact_detail = _clean(header_row.get("contact_detail", ""))
     sales_head = _clean(header_row.get("sales_head", ""))
+    payment_mode = _clean(header_row.get("payment_mode", ""))
+    bank = _clean(header_row.get("bank", ""))
+    
     prepared_by = _clean(header_row.get("prepared_by", ""))
     received_by_sig = _clean(header_row.get("received_by", ""))
     authorized_sig = _clean(header_row.get("authorized_signatory", ""))
+    
+    # DC Number nikalne ke liye
     dc_id = header_row.get("dc_id")
     dc_no = ""
     if dc_id is not None and challans_df is not None and not challans_df.empty:
@@ -872,21 +879,20 @@ def build_invoice_html(header_row, items_df, challans_df):
                 dc_no = str(m.iloc[0].get("challan_no", ""))
         except Exception:
             pass
-    bank = _clean(header_row.get("bank", ""))
-    payment_mode = _clean(header_row.get("payment_mode", ""))
+
     cartage = float(header_row.get("cartage", 0) or 0)
-    amount_received = float(header_row.get("amount_received", 0) or 0)
-    current_bill_amt = float(header_row.get("current_bill_amt", 0) or 0)
+    paid_amount = float(header_row.get("amount_received", 0) or 0)
     invoice_total = float(header_row.get("Invoice_Total", 0) or 0)
     balance_amt = float(header_row.get("Balance_Amount", 0) or 0)
-    remarks = _clean(header_row.get("remarks", ""))
+
     def _money(v):
         try: return f"{float(v):,.2f}"
         except Exception: return "0.00"
+
+    # Items Table generate karna
     rows_html = ""
     MIN_ROWS = 10
     count = 0
-    total_amount = 0.0
     if items_df is not None and not items_df.empty:
         for _, r in items_df.iterrows():
             sr = r.get("sr_no", "")
@@ -899,65 +905,76 @@ def build_invoice_html(header_row, items_df, challans_df):
             except Exception: qty_str = str(qty)
             try: price_str = f"{float(price):,.2f}"
             except Exception: price_str = str(price)
-            try:
-                amt_val = float(amt)
-                amt_str = f"{amt_val:,.2f}"
-                total_amount += amt_val
+            try: amt_str = f"{float(amt):,.2f}"
             except Exception: amt_str = str(amt)
+            
             rows_html += f'<tr><td class="c">{sr}</td><td>{desc}</td><td class="c">{qty_str}</td><td class="c">{unit}</td><td class="r">{price_str}</td><td class="r">{amt_str}</td></tr>'
             count += 1
+            
     for _ in range(max(0, MIN_ROWS - count)):
         rows_html += '<tr><td>&nbsp;</td><td></td><td></td><td></td><td></td><td></td></tr>'
+
     def _sig(label, value):
         return f'<div class="sig"><div class="sig-value">{value if value else "&nbsp;"}</div><div class="sig-line"></div><div class="sig-label">{label}</div></div>'
+
     def _cust(label, value):
         return f'<div class="cust-item"><b>{label}:</b> <span>{value}</span></div>' if value else ""
+
+    # 1. Customer Details
     customer_block = ""
-    for lbl, val in [("Customer Name", customer_name), ("Contact Detail", contact_detail),
-                     ("DC No.", dc_no), ("Sales Head", sales_head)]:
+    for lbl, val in [("Customer Name", customer_name), ("Contact Detail", contact_detail)]:
         customer_block += _cust(lbl, val)
+
+    # 2. Sales / Payment details
     profile_block = ""
-    for lbl, val in [("Bank", bank), ("Payment Mode", payment_mode),
-                     ("Cartage", _money(cartage) if cartage else "")]:
+    for lbl, val in [("Sales Head", sales_head), ("Payment Mode", payment_mode), ("Bank", bank)]:
         profile_block += _cust(lbl, val)
-    extra_css = """
-.challan-page .totals-box{border:1.5px solid #000;padding:8px 12px;margin-top:12px;background:#f9f9f9;}
-.challan-page .totals-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 20px;font-size:11.5px;}
-.challan-page .tot-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dashed #ccc;}
-.challan-page .tot-row:last-child{border-bottom:none;}
-.challan-page .tot-row b{font-weight:900;}
-.challan-page .grand-total{font-size:13px;font-weight:900;padding-top:4px;border-top:2px solid #000;}"""
+
     return f"""
 <div id="challan-print" class="challan-page">
-<style>{_shared_print_css(extra_css)}</style>
+<style>{_shared_print_css()}</style>
 {_letterhead_block()}
+
+<!-- 1. Date, Inv No, DC No -->
 <div class="meta-row">
-  <div><b>Invoice No:</b> <span>{invoice_no}</span></div>
   <div><b>Date:</b> <span>{invoice_date}</span></div>
+  <div><b>Invoice No:</b> <span>{invoice_no}</span></div>
+  <div><b>DC No:</b> <span>{dc_no if dc_no else 'N/A'}</span></div>
 </div>
-<div class="cust-box"><div class="cust-grid">
+
+<!-- 2. Customer Details -->
+<div class="cust-box"><div class="cust-grid" style="grid-template-columns: 1fr 1fr;">
 {customer_block if customer_block else '<div class="cust-item"><i>No customer details</i></div>'}
 </div></div>
+
+<!-- 3. Sales Head, Payment, Bank -->
+<div class="cust-box" style="margin-top:-8px;"><div class="cust-grid" style="grid-template-columns: 1fr 1fr 1fr;">
+{profile_block if profile_block else '<div class="cust-item"><i>No profile info</i></div>'}
+</div></div>
+
 <div class="bar">INVOICE</div>
-<table><thead><tr>
+
+<!-- 4. Items Table -->
+<table>
+<thead><tr>
 <th style="width:8%;">SR NO</th><th style="width:42%;">DESCRIPTION</th>
 <th style="width:10%;">QTY</th><th style="width:10%;">UNIT</th>
 <th style="width:15%;">PRICE/UNIT</th><th style="width:15%;">AMOUNT</th>
-</tr></thead><tbody>{rows_html}</tbody></table>
-<div class="totals-box"><div class="totals-grid">
-<div class="tot-row"><span>Total Items Amount:</span><b>{_money(total_amount)}</b></div>
-<div class="tot-row"><span>Cartage:</span><b>{_money(cartage)}</b></div>
-<div class="tot-row grand-total"><span>Invoice Total:</span><b>{_money(invoice_total)}</b></div>
-<div class="tot-row"><span>Paid Amount:</span><b>{_money(amount_received)}</b></div>
-<div class="tot-row"><span>Balance Amount:</span><b>{_money(balance_amt)}</b></div>
-</div></div>
-<div class="cust-box" style="margin-top:10px;">
-<div class="cust-grid">
-{profile_block if profile_block else '<div class="cust-item"><i>No client profile info</i></div>'}
+</tr></thead>
+<tbody>{rows_html}</tbody>
+</table>
+
+<!-- 5. Totals -->
+<div class="totals-box" style="display:flex; justify-content:flex-end; margin-top:12px;">
+  <table style="width:50%; border:1.5px solid #000;">
+    <tr><td style="font-weight:900; border:none; padding:4px 8px;">Invoice Total:</td><td style="text-align:right; border:none; padding:4px 8px;">{_money(invoice_total)}</td></tr>
+    <tr><td style="font-weight:900; border:none; border-top:1px dashed #ccc; padding:4px 8px;">Paid Amount:</td><td style="text-align:right; border:none; border-top:1px dashed #ccc; padding:4px 8px;">{_money(paid_amount)}</td></tr>
+    <tr><td style="font-weight:900; border:none; border-top:1.5px solid #000; padding:4px 8px;">Balance Amount:</td><td style="text-align:right; border:none; border-top:1.5px solid #000; font-weight:900; padding:4px 8px;">{_money(balance_amt)}</td></tr>
+  </table>
 </div>
-{f'<div class="cust-item" style="margin-top:6px;"><b>Remarks:</b> {remarks}</div>' if remarks else ''}
-</div>
-<div class="ftr">
+
+<!-- 6. Signatures -->
+<div class="ftr" style="margin-top:30px;">
 {_sig("Prepared By", prepared_by)}
 {_sig("Received By", received_by_sig)}
 {_sig("Authorized Signatory", authorized_sig)}
