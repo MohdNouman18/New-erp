@@ -920,41 +920,50 @@ def build_invoice_html(header_row, items_df, challans_df):
     def _cust(label, value):
         return f'<div class="cust-item"><b>{label}:</b> <span>{value}</span></div>' if value else ""
 
-    # 1. Customer Details
-    customer_block = ""
-    for lbl, val in [("Customer Name", customer_name), ("Contact Detail", contact_detail)]:
-        customer_block += _cust(lbl, val)
+    # Ek hi block mein saari details (Letterhead ke theek neechay)
+    info_block = ""
+    info_block += _cust("Date", invoice_date)
+    info_block += _cust("Invoice No", invoice_no)
+    info_block += _cust("DC No", dc_no if dc_no else "N/A")
+    info_block += _cust("Customer Name", customer_name)
+    info_block += _cust("Contact Detail", contact_detail)
+    info_block += _cust("Sales Head", sales_head)
+    info_block += _cust("Payment Mode", payment_mode)
+    info_block += _cust("Bank", bank)
 
-    # 2. Sales / Payment details
-    profile_block = ""
-    for lbl, val in [("Sales Head", sales_head), ("Payment Mode", payment_mode), ("Bank", bank)]:
-        profile_block += _cust(lbl, val)
+    # Extra CSS sirf invoice ke liye (Font barhane aur Cartage add karne ke liye)
+    extra_css = """
+    .challan-page .meta-info-grid {
+        display: grid; 
+        grid-template-columns: 1fr 1fr 1fr; 
+        gap: 6px 20px; 
+        font-size: 12.5px; /* Font size barha diya */
+        padding: 10px 12px;
+        border: 1px solid #000;
+        margin-bottom: 12px;
+        background: #f9f9f9;
+    }
+    .challan-page .totals-box{border:1.5px solid #000;padding:8px 12px;margin-top:12px;background:#f9f9f9;}
+    .challan-page .totals-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px 20px;font-size:11.5px;}
+    .challan-page .tot-row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dashed #ccc;}
+    .challan-page .tot-row:last-child{border-bottom:none;}
+    .challan-page .tot-row b{font-weight:900;}
+    .challan-page .grand-total{font-size:13px;font-weight:900;padding-top:4px;border-top:2px solid #000;}
+    """
 
     return f"""
 <div id="challan-print" class="challan-page">
-<style>{_shared_print_css()}</style>
+<style>{_shared_print_css(extra_css)}</style>
 {_letterhead_block()}
 
-<!-- 1. Date, Inv No, DC No -->
-<div class="meta-row">
-  <div><b>Date:</b> <span>{invoice_date}</span></div>
-  <div><b>Invoice No:</b> <span>{invoice_no}</span></div>
-  <div><b>DC No:</b> <span>{dc_no if dc_no else 'N/A'}</span></div>
+<!-- Letterhead ke neechay Details Block (Font barha hua) -->
+<div class="meta-info-grid">
+    {info_block}
 </div>
-
-<!-- 2. Customer Details -->
-<div class="cust-box"><div class="cust-grid" style="grid-template-columns: 1fr 1fr;">
-{customer_block if customer_block else '<div class="cust-item"><i>No customer details</i></div>'}
-</div></div>
-
-<!-- 3. Sales Head, Payment, Bank -->
-<div class="cust-box" style="margin-top:-8px;"><div class="cust-grid" style="grid-template-columns: 1fr 1fr 1fr;">
-{profile_block if profile_block else '<div class="cust-item"><i>No profile info</i></div>'}
-</div></div>
 
 <div class="bar">INVOICE</div>
 
-<!-- 4. Items Table -->
+<!-- Items Table -->
 <table>
 <thead><tr>
 <th style="width:8%;">SR NO</th><th style="width:42%;">DESCRIPTION</th>
@@ -964,16 +973,20 @@ def build_invoice_html(header_row, items_df, challans_df):
 <tbody>{rows_html}</tbody>
 </table>
 
-<!-- 5. Totals -->
-<div class="totals-box" style="display:flex; justify-content:flex-end; margin-top:12px;">
-  <table style="width:50%; border:1.5px solid #000;">
-    <tr><td style="font-weight:900; border:none; padding:4px 8px;">Invoice Total:</td><td style="text-align:right; border:none; padding:4px 8px;">{_money(invoice_total)}</td></tr>
-    <tr><td style="font-weight:900; border:none; border-top:1px dashed #ccc; padding:4px 8px;">Paid Amount:</td><td style="text-align:right; border:none; border-top:1px dashed #ccc; padding:4px 8px;">{_money(paid_amount)}</td></tr>
-    <tr><td style="font-weight:900; border:none; border-top:1.5px solid #000; padding:4px 8px;">Balance Amount:</td><td style="text-align:right; border:none; border-top:1.5px solid #000; font-weight:900; padding:4px 8px;">{_money(balance_amt)}</td></tr>
-  </table>
+<!-- Totals Block (Cartage just above Invoice Total) -->
+<div class="totals-box">
+  <div class="totals-grid" style="grid-template-columns: 1fr 1fr;">
+    <div></div>
+    <div>
+        <div class="tot-row"><span>Cartage:</span><b>{_money(cartage)}</b></div>
+        <div class="tot-row grand-total"><span>Invoice Total:</span><b>{_money(invoice_total)}</b></div>
+        <div class="tot-row"><span>Paid Amount:</span><b>{_money(paid_amount)}</b></div>
+        <div class="tot-row"><span>Balance Amount:</span><b>{_money(balance_amt)}</b></div>
+    </div>
+  </div>
 </div>
 
-<!-- 6. Signatures -->
+<!-- Signatures -->
 <div class="ftr" style="margin-top:30px;">
 {_sig("Prepared By", prepared_by)}
 {_sig("Received By", received_by_sig)}
